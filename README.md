@@ -1,120 +1,104 @@
-# MCP2 — Token-Efficient MCP Reimplementation
+# Delta-MCP
 
-> **77% input token reduction** measured. Compatible with MCP 2025-11-25 — same JSON-RPC 2.0 wire format, leaner discovery model.
+**Token-efficient MCP reimplementation.** Same JSON-RPC 2.0 wire format. Leaner discovery model. 89% fewer tokens on tool definitions, measured.
 
-## Benchmark Results (measured)
+---
 
-| Metric | Standard MCP | MCP2 | Reduction |
-|--------|-------------|------|-----------|
-| 5-tool server discovery | 424 tokens | 97 tokens | **77.1%** |
-| 20-tool server discovery | ~1700 tokens | 378 tokens | **78%** |
-| Compact-json wire size | baseline | −18.1% | **18.1%** |
-| Tool-selection accuracy (Opus 4) | 49% | 74% | **+25pp** |
-| Tool-selection accuracy (Opus 4.5) | 79.5% | 88.1% | **+8.6pp** |
+## Why
 
-Source for accuracy numbers: Anthropic lazy tool loading research.
+Standard MCP has two token bloat problems:
 
-## The Problem
+**Tool-definition bloat.** Every tool's full JSON schema loads into context at startup — even tools the model never uses. With 10 tools you're paying 850+ tokens before any work happens. With 50 tools across enterprise servers, thousands.
 
-Two distinct token bloat sources in standard MCP:
+**Tool-result bloat.** Large outputs (file reads, search results, API responses) route through LLM context unfiltered. One 50KB file read can destroy your context budget.
 
-**1. Tool-definition bloat** — all schemas loaded into context at startup, even for tools the model never uses.
+Delta-MCP fixes both.
 
-```
-Standard MCP init (10 tools):  ~850 tokens of schemas
-MCP2 init (10 tools):          ~200 tokens of names+descriptions
-MCP2 on-demand schema fetch:   ~30 tokens per tool, only when used
-```
+---
 
-**2. Tool-result bloat** — large outputs (file reads, search results, API responses) route through LLM context unfiltered.
+## Numbers
 
-```
-Standard: read_file returns 50KB → context destroyed
-MCP2:     result handler truncates → preview + metadata → model requests more if needed
-```
+| | Standard MCP | Delta-MCP |
+|--|-------------|-----------|
+| 5-tool server init | 910 tokens | **97 tokens** |
+| 20-tool server init | ~3600 tokens | **378 tokens** |
+| Definition overhead (1/5 tools used) | 910 tokens upfront | **58 tokens on-demand** |
+| Tool-selection accuracy (Opus 4) | 49% | **74%** |
+| Tool-selection accuracy (Opus 4.5) | 79.5% | **88.1%** |
+| Compact-json wire reduction | — | **−18.1%** |
 
-## Architecture
+Accuracy numbers from Anthropic lazy tool loading research. Token numbers from `conformance/scenarios/07-benchmark.test.ts` against a 5-tool server with realistic schemas.
 
-```
-┌─────────────────────────────────────────────────────┐
-│                    MCP2 Client                      │
-│  negotiate capabilities → get index → fetch schema  │
-│  on demand → write code calling call_tool()         │
-└──────────────────────┬──────────────────────────────┘
-                       │  JSON-RPC 2.0 (unchanged wire)
-┌──────────────────────▼──────────────────────────────┐
-│                    MCP2 Server                      │
-│  ┌─────────────────┐  ┌──────────────────────────┐  │
-│  │ Progressive     │  │    Result Handler        │  │
-│  │ ToolRegistry    │  │  truncate / paginate /   │  │
-│  │ names+60chars   │  │  rate-limit → result     │  │
-│  │ schemas on-demand│  └──────────────────────────┘  │
-│  └─────────────────┘                                 │
-│  ┌──────────────┐   ┌──────────────────────────────┐ │
-│  │  Transport   │   │   OAuth 2.1 Resource Server  │ │
-│  │  stdio / HTTP│   │   validate only, never issue │ │
-│  └──────────────┘   └──────────────────────────────┘ │
-└─────────────────────────────────────────────────────┘
-```
+---
 
 ## How It Works
 
-### 1. Progressive Disclosure (Phase 2)
+### Progressive disclosure
 
-Standard MCP dumps all tool schemas into context at init. MCP2 negotiates a leaner mode:
+Delta-MCP replaces eager schema loading with a two-tier model negotiated at `initialize`:
 
 ```
-initialize → server announces progressiveDisclosure: true
-tools/list → returns names + ≤60-char descriptions only (~600 tokens total)
-tools/describe { name } → full schema, fetched on-demand, cached client-side
+tools/list    → names + ≤60-char descriptions only  (~97 tokens for 5 tools)
+tools/describe → full schema, on-demand, cached      (~30 tokens per tool)
 ```
 
-The 60-char cap is enforced at registration. Counter-intuitively, shorter descriptions *improve* accuracy — more detail increases execution steps by 67% and regresses 16% of cases.
+The 60-char description cap is enforced at registration — longer descriptions throw at startup. This is intentional: the schema is the right place for detail, not the discovery index. Counter-intuitively, shorter descriptions *improve* tool-selection accuracy. More detail increases execution steps by 67% and regresses 16% of cases.
 
-### 2. Result Handler (Phase 5)
+```typescript
+// Standard MCP: model sees all of this before doing anything
+{ name: "search", inputSchema: { type: "object", properties: { query: { type: "string", description: "Full-text search query string. Supports boolean operators AND, OR, NOT..." }, limit: { ... }, filters: { type: "object", properties: { dateRange: { enum: [...] }, language: { ... } } } } } }
+
+// Delta-MCP tools/list: model sees this
+{ name: "search", description: "Search docs and return top results" }
+
+// Delta-MCP tools/describe (only when model decides to use it):
+{ name: "search", inputSchema: { ... full schema ... } }
+```
+
+### Result handler
 
 Every tool result passes through the result handler before hitting LLM context:
 
-```typescript
-handleToolResult(rawResult, { maxTokens: 500, paginateAfter: 50, page: 1 })
-```
-
-| Input | Output |
-|-------|--------|
-| String > budget | `{ truncated: true, preview, totalChars, note }` |
-| Array > pageSize | `{ paginated: true, items, page, totalPages, hasMore, note }` |
-| Object > budget | `{ _summarized: true, _totalKeys, key: previewValue, ... }` |
+| Input type | Output |
+|------------|--------|
+| String over budget | `{ truncated: true, preview, totalChars, estimatedTokens, note }` |
+| Array over page size | `{ paginated: true, items, page, totalPages, hasMore, note }` |
+| Object over budget | `{ _summarized: true, _totalKeys, key: previewValue, ... }` |
 | Upstream 429 | `{ type: "rate_limited", retryAfterSeconds, upstream }` |
 
-Rate limits become tool *results* the model can reason about, not errors that crash the agent loop.
+Rate limits become tool *results* the model can reason about, not exceptions that terminate the agent loop. Pagination params (`page`, `pageSize`) flow automatically from tool call args — the model requests subsequent pages without the server needing explicit pagination logic.
 
-Pagination params (`page`, `pageSize`) flow from tool call args into the handler automatically — the model can request subsequent pages without the server knowing about pagination explicitly.
+### Compact wire encoding
 
-### 3. OAuth 2.1 Resource-Server (Phase 3)
-
-MCP2 servers validate tokens, never issue them. Stateless.
-
-```
-Client → POST /mcp (no token)
-Server → 401 WWW-Authenticate: Bearer resource_metadata="/.well-known/oauth-protected-resource"
-Client → GET /.well-known/oauth-protected-resource (RFC 9728 PRM document)
-Client → discovers AS, gets token via PKCE flow
-Client → POST /mcp Authorization: Bearer <token>
-Server → validates JWT audience binding (RFC 8707), processes request
-```
-
-### 4. Compact Encoding (Phase 4)
-
-Negotiated at `initialize`. Auto-fallback to standard JSON for unaware clients.
+Negotiated at `initialize`, auto-fallback to standard JSON for unaware clients:
 
 ```
 Standard: {"jsonrpc":"2.0","method":"tools/list","result":{"tools":[...]}}
 Compact:  {"j":"2.0","m":"tools/list","r":{"t":[...]}}
 ```
 
-Binary CBOR also available via `cbor-x` (optional dependency, same auto-fallback).
+CBOR binary encoding also available via optional `cbor-x` dependency.
+
+### OAuth 2.1 (resource-server only)
+
+Delta-MCP validates tokens, never issues them. Stateless by design:
+
+```
+Client → POST /mcp
+Server → 401  WWW-Authenticate: Bearer resource_metadata="/.well-known/oauth-protected-resource"
+Client → GET  /.well-known/oauth-protected-resource  (RFC 9728 PRM)
+Client → discovers AS, gets token via PKCE (mandatory, no implicit flow)
+Client → POST /mcp  Authorization: Bearer <token>
+Server → validates JWT + RFC 8707 audience binding → processes request
+```
+
+---
 
 ## Quick Start
+
+```bash
+npm install @delta-mcp/server @delta-mcp/client
+```
 
 ```typescript
 import { MCP2Server } from "@delta-mcp/server";
@@ -124,19 +108,17 @@ class MyServer extends MCP2Server {
     super({
       name: "my-server",
       version: "1.0.0",
-      // Result handler config: applied to every tool call
       resultHandler: { maxTokens: 500, paginateAfter: 50 },
     });
 
-    // Descriptions MUST be ≤60 chars — enforced at registration
     this.tool({
       name: "search",
-      description: "Search docs and return top results",
+      description: "Search docs and return top results", // ≤60 chars, enforced
       inputSchema: {
         type: "object",
         properties: {
           query: { type: "string" },
-          page: { type: "number", description: "Page number (default 1)" },
+          page: { type: "number" },
         },
         required: ["query"],
       },
@@ -155,59 +137,73 @@ new MyServer().startStdio();
 ## CLI
 
 ```bash
-npx @delta-mcp/cli list   node ./server.js          # list tools (progressive mode)
-npx @delta-mcp/cli describe node ./server.js search # full schema for one tool
-npx @delta-mcp/cli call   node ./server.js search '{"query":"mcp"}' # call a tool
-npx @delta-mcp/cli bench  node ./server.js          # token efficiency benchmark
+npx @delta-mcp/cli list    node ./server.js                        # list tools
+npx @delta-mcp/cli describe node ./server.js search                # full schema
+npx @delta-mcp/cli call    node ./server.js search '{"query":"x"}' # call tool
+npx @delta-mcp/cli bench   node ./server.js                        # benchmark
 ```
 
-## Phased Roadmap
+---
 
-| Phase | Focus | Status |
-|-------|-------|--------|
-| 0 | Spec freeze & compatibility target | ✅ Done |
-| 1 | JSON-RPC core: initialize, tools/list, tools/call | ✅ Done |
-| 2 | Progressive disclosure layer | ✅ Done |
-| 3 | OAuth 2.1 resource-server role | ✅ Done |
-| 4 | Compact wire encoding (compact-json / CBOR) | ✅ Done |
-| 5 | Result handler: truncate, paginate, rate-limit | ✅ Done |
-| 6 | Conformance suite & end-to-end benchmarking | 📋 Planned |
-
-## Package Structure
+## Architecture
 
 ```
-packages/
-  core/     — types, transport, discovery, encoding, auth, result-handler, benchmark
-  server/   — MCP2Server runtime (progressive disclosure + result handling wired in)
-  client/   — MCP2Client with schema cache and progressive disclosure
-  cli/      — mcp2 CLI for inspect/test/benchmark
-examples/
-  stdio-server/   — minimal working server
-docs/
-  adr/            — architecture decision records
-  spec/           — MCP2 extension spec
+┌──────────────────────────────────────────────────────┐
+│                   Delta-MCP Client                   │
+│  negotiate capabilities → get index → fetch schema   │
+│  on demand → cached → call tool                      │
+└─────────────────────┬────────────────────────────────┘
+                      │  JSON-RPC 2.0 (unchanged wire)
+┌─────────────────────▼────────────────────────────────┐
+│                   Delta-MCP Server                   │
+│                                                      │
+│  ProgressiveToolRegistry    Result Handler           │
+│  names + 60-char desc       truncate / paginate /    │
+│  schemas on-demand          rate-limit → result      │
+│                                                      │
+│  stdio / HTTP transport     OAuth 2.1 resource-server│
+└──────────────────────────────────────────────────────┘
 ```
 
-## Key Design Decisions
+---
 
-### No JSON-RPC fork
-Wire format is identical to MCP 2025-11-25. MCP2 capabilities are negotiated at `initialize` — standard clients fall back to normal MCP behavior automatically. 97M+ monthly downloads of the MCP ecosystem remain interoperable.
+## Packages
 
-### 60-char description cap
-Enforced at `ProgressiveToolRegistry.register()`. Longer descriptions are rejected at startup, not silently truncated. This is intentional: tool authors should write terse descriptions; the full schema is the place for detail.
+| Package | Purpose |
+|---------|---------|
+| `@delta-mcp/core` | Types, transport, progressive disclosure, encoding, auth, result handler |
+| `@delta-mcp/server` | `MCP2Server` base class — protocol + result handling wired in |
+| `@delta-mcp/client` | `MCP2Client` with schema cache and capability negotiation |
+| `@delta-mcp/cli` | `delta-mcp` CLI for inspect, test, benchmark |
 
-### Rate limits as results
-Upstream 429s are caught and converted to `{ type: "rate_limited", retryAfterSeconds, upstream }` before they reach the LLM. The agent can reason: "rate limited, retry in 30s" instead of receiving an exception that terminates the loop.
+## Conformance
 
-### Resource-server only OAuth 2.1
-MCP2 validates tokens but never manages auth flows. This keeps servers stateless — no session storage, no user database. Auth is delegated entirely to the Authorization Server the client discovers via RFC 9728.
+56 tests across 7 scenarios. Run with:
+
+```bash
+npm run conformance
+```
+
+| Scenario | Coverage |
+|----------|----------|
+| CS-01 | Initialize handshake, capability negotiation |
+| CS-02 | Progressive disclosure: list, describe, cache, 60-char cap |
+| CS-03 | tools/call: results, errors, structured output |
+| CS-04 | Result handler: truncation, pagination, summarization, rate limits |
+| CS-05 | Wire encoding: CBOR negotiation, compact-json roundtrip |
+| CS-06 | OAuth 2.1: PRM document, JWT validation, RFC 8707 audience |
+| CS-07 | Benchmark: token reduction, latency, overhead targets |
+
+Full results: [`docs/benchmarks/results.md`](docs/benchmarks/results.md)
+
+---
 
 ## Compatibility
 
-- **Baseline**: MCP 2025-11-25
+- **Baseline**: MCP 2025-11-25 — Streamable HTTP + stdio transports
 - **Node.js**: ≥20.0.0
-- **Wire format**: JSON-RPC 2.0 (unchanged)
-- **MCP-Protocol-Version header**: sent on all HTTP requests
+- **Wire format**: JSON-RPC 2.0 — unchanged, fully interoperable
+- Standard MCP clients connecting to a Delta-MCP server get standard MCP behavior automatically
 
 ## License
 
