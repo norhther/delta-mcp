@@ -27,7 +27,7 @@ export interface DeltaServerOptions {
  * disclosure extension. Drop-in replacement for standard MCP servers;
  * falls back gracefully for clients that don't negotiate MCP2 capabilities.
  */
-export class DeltaServer {
+export abstract class DeltaServer {
   private registry = new ProgressiveToolRegistry();
   private clientProgressiveDisclosure = false;
 
@@ -98,7 +98,7 @@ export class DeltaServer {
   private handleToolsList(id: unknown): JsonRpcResponse {
     const tools = this.clientProgressiveDisclosure
       ? this.registry.listSummaries() // short descriptions only — the token savings
-      : Array.from({ length: 0 }); // standard clients get empty; use tools/list compat below
+      : this.registry.listFull();     // standard clients get full schemas (MCP baseline compat)
 
     return {
       jsonrpc: "2.0",
@@ -167,11 +167,7 @@ export class DeltaServer {
     }
   }
 
-  // Subclass or compose to provide actual tool implementations
-  protected async callTool(name: string, args: unknown): Promise<unknown> {
-    void name; void args;
-    throw new Error("callTool not implemented — compose DeltaServer with tool handlers");
-  }
+  protected abstract callTool(name: string, args: unknown): Promise<unknown>;
 
   startStdio(): void {
     const transport = new StdioTransport((msg) => this.handle(msg));

@@ -35,6 +35,11 @@ export class ProgressiveToolRegistry {
     }));
   }
 
+  /** Full schemas for all tools — used for standard (non-progressive) clients */
+  listFull(): ToolDefinition[] {
+    return Array.from(this.tools.values());
+  }
+
   /** Full schema — only fetched when model explicitly requests it */
   describe(name: string): ToolDefinition | undefined {
     return this.tools.get(name);

@@ -8,7 +8,7 @@
   },
   "scripts": {
     "build": "tsc --build",
-    "test": "vitest run || true"
+    "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
     "@delta-mcp/client": "^0.1.0",

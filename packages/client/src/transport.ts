@@ -7,6 +7,8 @@ export type PendingRequest = {
   reject: (e: Error) => void;
 };
 
+const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
+
 /** Stdio transport for client side — spawns a server process, talks JSON-RPC */
 export class StdioClientTransport {
   private proc: ChildProcess;
@@ -14,8 +16,10 @@ export class StdioClientTransport {
   private nextId = 1;
   private rl: ReturnType<typeof createInterface>;
   private notificationHandlers: Array<(method: string, params: unknown) => void> = [];
+  private readonly timeoutMs: number;
 
-  constructor(command: string, args: string[] = [], env?: Record<string, string>) {
+  constructor(command: string, args: string[] = [], env?: Record<string, string>, timeoutMs = DEFAULT_REQUEST_TIMEOUT_MS) {
+    this.timeoutMs = timeoutMs;
     this.proc = spawn(command, args, {
       stdio: ["pipe", "pipe", "inherit"],
       env: { ...process.env, ...env },
@@ -54,7 +58,15 @@ export class StdioClientTransport {
   send(method: string, params?: unknown): Promise<JsonRpcResponse> {
     const id = this.nextId++;
     return new Promise((resolve, reject) => {
-      this.pending.set(id, { resolve, reject });
+      const timer = setTimeout(() => {
+        this.pending.delete(id);
+        reject(new Error(`Request "${method}" (id=${id}) timed out after ${this.timeoutMs}ms`));
+      }, this.timeoutMs);
+
+      this.pending.set(id, {
+        resolve: (v) => { clearTimeout(timer); resolve(v); },
+        reject: (e) => { clearTimeout(timer); reject(e); },
+      });
       const msg: JsonRpcRequest = { jsonrpc: "2.0", id, method, params };
       this.proc.stdin!.write(JSON.stringify(msg) + "\n");
     });
@@ -103,8 +115,15 @@ export class HttpClientTransport {
     return res.json() as Promise<JsonRpcResponse>;
   }
 
-  notify(_method: string, _params?: unknown): void {
-    // HTTP transport: notifications sent as fire-and-forget POST
+  notify(method: string, params?: unknown): void {
+    const msg = { jsonrpc: "2.0", method, params };
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      "MCP-Protocol-Version": "delta-mcp/0.1.0",
+    };
+    if (this.token) headers["Authorization"] = `Bearer ${this.token}`;
+    // Fire-and-forget: notifications have no response
+    fetch(this.baseUrl, { method: "POST", headers, body: JSON.stringify(msg) }).catch(() => {});
   }
 }
 

@@ -7,12 +7,18 @@ export type HttpMessageHandler = (
   req: IncomingMessage
 ) => Promise<JsonRpcResponse | null>;
 
+export interface HttpHandlerOptions {
+  /** Require a Bearer token on every POST. Default: true. Set false for local/dev use. */
+  authRequired?: boolean;
+}
+
 /**
  * Streamable HTTP transport (MCP 2025-11-25 spec).
  * Single endpoint, optional SSE on GET.
  * Validates MCP-Protocol-Version header — required from 2025-06-18 onward.
  */
-export function createHttpHandler(handler: HttpMessageHandler) {
+export function createHttpHandler(handler: HttpMessageHandler, opts: HttpHandlerOptions = {}) {
+  const authRequired = opts.authRequired ?? true;
   return async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
     // Version header validation
     const clientVersion = req.headers["mcp-protocol-version"] as string | undefined;
@@ -42,14 +48,16 @@ export function createHttpHandler(handler: HttpMessageHandler) {
     }
 
     // OAuth 2.1 resource-server role: validate bearer token
-    const auth = req.headers.authorization;
-    if (!auth?.startsWith("Bearer ")) {
-      res.writeHead(401, {
-        "WWW-Authenticate":
-          'Bearer realm="delta-mcp", resource_metadata="/.well-known/oauth-protected-resource"',
-      });
-      res.end();
-      return;
+    if (authRequired) {
+      const auth = req.headers.authorization;
+      if (!auth?.startsWith("Bearer ")) {
+        res.writeHead(401, {
+          "WWW-Authenticate":
+            'Bearer realm="delta-mcp", resource_metadata="/.well-known/oauth-protected-resource"',
+        });
+        res.end();
+        return;
+      }
     }
 
     const body = await readBody(req);

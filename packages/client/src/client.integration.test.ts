@@ -9,7 +9,7 @@ import { fileURLToPath } from "url";
 import { join, dirname } from "path";
 
 const __dir = dirname(fileURLToPath(import.meta.url));
-const SERVER = join(__dir, "../../../server/dist/index.js");
+const SERVER = join(__dir, "../../server/dist/demo.js");
 
 function tokenEstimate(obj: unknown): number {
   return Math.ceil(JSON.stringify(obj).length / 4);

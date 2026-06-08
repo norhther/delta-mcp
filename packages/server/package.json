@@ -7,7 +7,7 @@
   "types": "dist/index.d.ts",
   "scripts": {
     "build": "tsc --build",
-    "test": "vitest run || true"
+    "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
     "@delta-mcp/core": "^0.1.0"
