@@ -49,10 +49,12 @@ export function buildWWWAuthenticate(resourceMetadataUrl: string): string {
  * Validate bearer token against introspection endpoint or local JWKS.
  * Stub — wire up to your AS's introspection endpoint or JWT validation.
  */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 export async function validateToken(
-  _token: string,
-  _resourceUrl: string
+  token: string,
+  resourceUrl: string
 ): Promise<TokenValidationResult> {
+  void token; void resourceUrl;
   // TODO Phase 3: implement JWT validation or AS introspection
   // Must verify: aud matches resourceUrl (RFC 8707 resource indicators)
   throw new Error("Not implemented — Phase 3");

@@ -159,7 +159,8 @@ export class MCP2Server {
   }
 
   // Subclass or compose to provide actual tool implementations
-  protected async callTool(_name: string, _args: unknown): Promise<unknown> {
+  protected async callTool(name: string, args: unknown): Promise<unknown> {
+    void name; void args;
     throw new Error("callTool not implemented — compose MCP2Server with tool handlers");
   }
 
