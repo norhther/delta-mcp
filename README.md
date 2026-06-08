@@ -70,14 +70,16 @@ Rate limits become tool *results* the model can reason about, not exceptions tha
 
 ### Compact wire encoding
 
-Negotiated at `initialize`, auto-fallback to standard JSON for unaware clients:
+Negotiated at `initialize`, auto-fallback to standard JSON for unaware clients. Both sides switch codecs after the handshake — the `initialize` response itself is always plain JSON so the client can read it before the switch.
 
 ```
 Standard: {"jsonrpc":"2.0","method":"tools/list","result":{"tools":[...]}}
 Compact:  {"j":"2.0","m":"tools/list","r":{"t":[...]}}
 ```
 
-CBOR binary encoding also available via optional `cbor-x` dependency.
+CBOR binary encoding is available over HTTP via the optional `cbor-x` dependency. Stdio clamps to compact-json because CBOR is binary and cannot be safely newline-delimited.
+
+The HTTP transport decodes requests by `Content-Type` and encodes responses by the client's `Accept` header. The `MCP-Protocol-Version` header is required on all requests except `initialize` — the client doesn't know the version until the handshake completes.
 
 ### OAuth 2.1 (resource-server only)
 
@@ -178,7 +180,7 @@ npx @delta-mcp/cli bench   node ./server.js                        # benchmark
 
 ## Conformance
 
-56 tests across 7 scenarios. Run with:
+61 tests across 8 scenarios. Run with:
 
 ```bash
 npm run conformance
@@ -186,13 +188,14 @@ npm run conformance
 
 | Scenario | Coverage |
 |----------|----------|
-| CS-01 | Initialize handshake, capability negotiation |
+| CS-01 | Initialize handshake, capability negotiation, codec negotiation |
 | CS-02 | Progressive disclosure: list, describe, cache, 60-char cap |
 | CS-03 | tools/call: results, errors, structured output |
 | CS-04 | Result handler: truncation, pagination, summarization, rate limits |
 | CS-05 | Wire encoding: CBOR negotiation, compact-json roundtrip |
 | CS-06 | OAuth 2.1: PRM document, JWT validation, RFC 8707 audience |
 | CS-07 | Benchmark: token reduction, latency, overhead targets |
+| CS-08 | HTTP transport: version header exemption, codec round-trip |
 
 Full results: [`docs/benchmarks/results.md`](docs/benchmarks/results.md)
 

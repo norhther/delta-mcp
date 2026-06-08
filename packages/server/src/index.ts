@@ -3,6 +3,7 @@ import {
   StdioTransport,
   handleToolResult,
   detectAndHandleRateLimit,
+  negotiate,
   DELTA_PROTOCOL_VERSION,
   MCP_BASELINE_VERSION,
   ErrorCodes,
@@ -11,6 +12,7 @@ import {
   type ServerCapabilities,
   type ToolDefinition,
   type ResultHandlerOptions,
+  type EncodingFormat,
 } from "@delta-mcp/core";
 
 export interface DeltaServerOptions {
@@ -30,6 +32,7 @@ export interface DeltaServerOptions {
 export abstract class DeltaServer {
   private registry = new ProgressiveToolRegistry();
   private clientProgressiveDisclosure = false;
+  private transport?: StdioTransport;
 
   constructor(private opts: DeltaServerOptions) {}
 
@@ -83,6 +86,22 @@ export abstract class DeltaServer {
     this.clientProgressiveDisclosure =
       !!clientCaps?.tools?.progressiveDisclosure;
 
+    // Negotiate wire encoding from both sides' capabilities.
+    const serverEnc = this.capabilities().encoding ?? {};
+    const { format } = negotiate(
+      {
+        compactJson: serverEnc.compactJson,
+        cbor: serverEnc.cbor,
+        schemaHashReferencing: serverEnc.schemaHashReferencing,
+      },
+      { compactJson: clientCaps?.encoding?.compactJson, cbor: clientCaps?.encoding?.cbor }
+    );
+
+    // Switch the stdio codec *after* this (plain-JSON) response is sent, so the
+    // client can still decode the handshake. The negotiated format is echoed in
+    // the result so the client switches to the same codec.
+    if (this.transport) this.transport.scheduleEncoding(format);
+
     return {
       jsonrpc: "2.0",
       id: id as any,
@@ -91,6 +110,7 @@ export abstract class DeltaServer {
         baselineVersion: MCP_BASELINE_VERSION,
         serverInfo: { name: this.opts.name, version: this.opts.version },
         capabilities: this.capabilities(),
+        encoding: { format } as { format: EncodingFormat },
       },
     };
   }
@@ -170,7 +190,7 @@ export abstract class DeltaServer {
   protected abstract callTool(name: string, args: unknown): Promise<unknown>;
 
   startStdio(): void {
-    const transport = new StdioTransport((msg) => this.handle(msg));
-    transport.start();
+    this.transport = new StdioTransport((msg) => this.handle(msg));
+    this.transport.start();
   }
 }

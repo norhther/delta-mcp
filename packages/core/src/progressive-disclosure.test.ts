@@ -52,4 +52,36 @@ describe("Progressive disclosure — Phase 2 conformance", () => {
     reg2.register({ name: "a", description: "Tool A — first example tool", inputSchema: { type: "object" } });
     expect(reg2.schemaHash("a")).toBe(reg.schemaHash("a"));
   });
+
+  it("schema hash reflects nested properties (no collision on same top-level keys)", () => {
+    const reg = new ProgressiveToolRegistry();
+    reg.register({
+      name: "a",
+      description: "Tool A — first example tool",
+      inputSchema: { type: "object", properties: { x: { type: "string" } }, required: ["x"] },
+    });
+    reg.register({
+      name: "b",
+      description: "Tool B — second example tool",
+      inputSchema: { type: "object", properties: { y: { type: "number" } }, required: ["x"] },
+    });
+
+    expect(reg.schemaHash("a")).not.toBe(reg.schemaHash("b"));
+  });
+
+  it("schema hash is independent of key insertion order", () => {
+    const reg = new ProgressiveToolRegistry();
+    reg.register({
+      name: "a",
+      description: "Tool A — first example tool",
+      inputSchema: { type: "object", required: ["x"], properties: { x: { type: "string" } } },
+    });
+    const reg2 = new ProgressiveToolRegistry();
+    reg2.register({
+      name: "a",
+      description: "Tool A — first example tool",
+      inputSchema: { properties: { x: { type: "string" } }, type: "object", required: ["x"] },
+    });
+    expect(reg2.schemaHash("a")).toBe(reg.schemaHash("a"));
+  });
 });

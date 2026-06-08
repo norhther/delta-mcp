@@ -30,4 +30,12 @@ describe("CS-01: Initialize handshake", () => {
     expect(enc?.compactJson).toBe(true);
     expect(enc?.schemaHashReferencing).toBe(true);
   });
+
+  it("CS-01-05: stdio handshake negotiates compact-json and keeps working", async () => {
+    // The whole suite runs through this negotiated codec; this asserts it is
+    // actually in effect (not silently falling back to plain JSON).
+    expect(fx.client.sessionInfo.encoding).toBe("compact-json");
+    const tools = await fx.client.listTools();
+    expect(tools.length).toBeGreaterThan(0);
+  });
 });

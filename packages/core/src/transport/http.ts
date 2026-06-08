@@ -1,6 +1,7 @@
 import type { IncomingMessage, ServerResponse } from "http";
 import type { JsonRpcRequest, JsonRpcResponse } from "../protocol/types.js";
 import { DELTA_PROTOCOL_VERSION } from "../protocol/types.js";
+import { type Codec, getCodec, getCodecForContentType } from "../encoding/codec.js";
 
 export type HttpMessageHandler = (
   msg: JsonRpcRequest,
@@ -20,18 +21,13 @@ export interface HttpHandlerOptions {
 export function createHttpHandler(handler: HttpMessageHandler, opts: HttpHandlerOptions = {}) {
   const authRequired = opts.authRequired ?? true;
   return async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
-    // Version header validation
-    const clientVersion = req.headers["mcp-protocol-version"] as string | undefined;
-    if (!clientVersion) {
-      res.writeHead(400, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ error: "Missing MCP-Protocol-Version header" }));
-      return;
-    }
-
     res.setHeader("MCP-Protocol-Version", DELTA_PROTOCOL_VERSION);
+    const clientVersion = req.headers["mcp-protocol-version"] as string | undefined;
 
-    // SSE stream for server-initiated messages
+    // SSE stream for server-initiated messages (only meaningful post-initialize,
+    // so the version header is required here).
     if (req.method === "GET" && req.headers.accept?.includes("text/event-stream")) {
+      if (!clientVersion) return sendMissingVersion(res);
       res.writeHead(200, {
         "Content-Type": "text/event-stream",
         "Cache-Control": "no-cache",
@@ -60,27 +56,54 @@ export function createHttpHandler(handler: HttpMessageHandler, opts: HttpHandler
       }
     }
 
+    const reqCodec = getCodecForContentType(req.headers["content-type"]);
     const body = await readBody(req);
     let msg: JsonRpcRequest;
     try {
-      msg = JSON.parse(body) as JsonRpcRequest;
+      msg = reqCodec.decode(body) as JsonRpcRequest;
     } catch {
       res.writeHead(400, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ jsonrpc: "2.0", id: null, error: { code: -32700, message: "Parse error" } }));
       return;
     }
 
+    // Version header is mandatory on every request *except* initialize — the
+    // client doesn't know the negotiated version until initialize returns.
+    if (msg.method !== "initialize" && !clientVersion) {
+      return sendMissingVersion(res);
+    }
+
     const response = await handler(msg, req);
-    res.writeHead(200, { "Content-Type": "application/json" });
-    res.end(response ? JSON.stringify(response) : "");
+    const resCodec = pickResponseCodec(req.headers.accept, reqCodec);
+    res.writeHead(200, { "Content-Type": resCodec.contentType });
+    if (!response) {
+      res.end("");
+      return;
+    }
+    res.end(resCodec.encode(response));
   };
 }
 
-function readBody(req: IncomingMessage): Promise<string> {
+function sendMissingVersion(res: ServerResponse): void {
+  res.writeHead(400, { "Content-Type": "application/json" });
+  res.end(JSON.stringify({ error: "Missing MCP-Protocol-Version header" }));
+}
+
+/** Choose response codec from the client's Accept header, else echo the request codec. */
+function pickResponseCodec(accept: string | undefined, fallback: Codec): Codec {
+  if (accept) {
+    if (accept.includes("application/cbor")) return getCodec("cbor");
+    if (accept.includes("variant=compact")) return getCodec("compact-json");
+    if (accept.includes("application/json")) return getCodec("json");
+  }
+  return fallback;
+}
+
+function readBody(req: IncomingMessage): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
     req.on("data", (c: Buffer) => chunks.push(c));
-    req.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
+    req.on("end", () => resolve(Buffer.concat(chunks)));
     req.on("error", reject);
   });
 }

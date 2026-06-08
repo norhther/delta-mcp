@@ -46,4 +46,24 @@ export function getCodec(format: EncodingFormat): Codec {
   }
 }
 
+/**
+ * Pick a codec from a Content-Type (or Accept) header value.
+ * Used by the HTTP transport to decode requests / encode responses.
+ * Unknown or missing types fall back to baseline JSON.
+ */
+export function getCodecForContentType(contentType?: string | null): Codec {
+  if (!contentType) return jsonCodec;
+  if (contentType.includes("application/cbor")) return getCodec("cbor");
+  if (contentType.includes("variant=compact")) return compactJsonCodec;
+  return jsonCodec;
+}
+
+/**
+ * Codec safe for newline-delimited stdio. CBOR is binary and may contain
+ * 0x0A bytes that would corrupt the line framing, so it clamps to compact-json.
+ */
+export function getStdioCodec(format: EncodingFormat): Codec {
+  return format === "cbor" ? compactJsonCodec : getCodec(format);
+}
+
 export { jsonCodec, compactJsonCodec, cborCodec };

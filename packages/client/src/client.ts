@@ -3,12 +3,14 @@ import type {
   ToolDefinition,
   ServerCapabilities,
   ClientCapabilities,
+  EncodingFormat,
 } from "@delta-mcp/core";
-import { DELTA_PROTOCOL_VERSION } from "@delta-mcp/core";
+import { DELTA_PROTOCOL_VERSION, negotiate } from "@delta-mcp/core";
 import type { StdioClientTransport, HttpClientTransport } from "./transport.js";
 
 export type Transport = Pick<StdioClientTransport | HttpClientTransport, "send"> & {
   notify?: (method: string, params?: unknown) => void;
+  setEncoding?: (format: EncodingFormat) => void;
 };
 
 export interface SessionInfo {
@@ -17,6 +19,8 @@ export interface SessionInfo {
   protocolVersion: string;
   capabilities: ServerCapabilities;
   progressiveDisclosure: boolean;
+  /** Negotiated wire encoding in effect after the handshake. */
+  encoding: EncodingFormat;
 }
 
 /**
@@ -58,7 +62,20 @@ export class DeltaClient {
       serverInfo: { name: string; version: string };
       protocolVersion: string;
       capabilities: ServerCapabilities;
+      encoding?: { format: EncodingFormat };
     };
+
+    // Resolve the negotiated wire encoding. Prefer the format the server echoed;
+    // otherwise recompute it from both capability sets.
+    const format =
+      result.encoding?.format ??
+      negotiate(
+        {
+          compactJson: result.capabilities.encoding?.compactJson,
+          cbor: result.capabilities.encoding?.cbor,
+        },
+        { compactJson: caps.encoding?.compactJson, cbor: caps.encoding?.cbor }
+      ).format;
 
     this.session = {
       serverName: result.serverInfo.name,
@@ -66,9 +83,12 @@ export class DeltaClient {
       protocolVersion: result.protocolVersion,
       capabilities: result.capabilities,
       progressiveDisclosure: !!result.capabilities.tools?.progressiveDisclosure,
+      encoding: format,
     };
 
-    // Send initialized notification
+    // Switch the transport to the agreed codec *before* the initialized
+    // notification so that message already goes out in the negotiated encoding.
+    this.transport.setEncoding?.(format);
     this.transport.notify?.("notifications/initialized");
 
     return this.session;

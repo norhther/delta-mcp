@@ -57,11 +57,29 @@ export class ProgressiveToolRegistry {
 
 // Deterministic 8-char hash — cheap schema deduplication for compact encoding
 function hashSchema(schema: Record<string, unknown>): string {
-  const json = JSON.stringify(schema, Object.keys(schema).sort());
+  const json = stableStringify(schema);
   let h = 0x811c9dc5;
   for (let i = 0; i < json.length; i++) {
     h ^= json.charCodeAt(i);
     h = Math.imul(h, 0x01000193);
   }
   return (h >>> 0).toString(16).padStart(8, "0");
+}
+
+/**
+ * Serialize with object keys sorted recursively, so logically-equal schemas
+ * produce identical strings regardless of key insertion order.
+ *
+ * Note: JSON.stringify's array replacer is a property *allowlist* applied at
+ * every depth — it cannot be used to sort keys (it silently drops nested keys
+ * not in the list). We walk the structure ourselves instead.
+ */
+function stableStringify(value: unknown): string {
+  if (value === null || typeof value !== "object") return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map(stableStringify).join(",")}]`;
+
+  const entries = Object.keys(value as Record<string, unknown>)
+    .sort()
+    .map((k) => `${JSON.stringify(k)}:${stableStringify((value as Record<string, unknown>)[k])}`);
+  return `{${entries.join(",")}}`;
 }
