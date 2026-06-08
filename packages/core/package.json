@@ -1,0 +1,16 @@
+{
+  "name": "@mcp2/core",
+  "version": "0.1.0",
+  "description": "Core MCP2 protocol types, transport, and progressive disclosure",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run",
+    "dev": "tsc --watch"
+  },
+  "dependencies": {
+    "cbor-x": "^1.5.0",
+    "zod": "^3.23.0"
+  }
+}
