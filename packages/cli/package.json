@@ -1,15 +1,17 @@
 {
-  "name": "@mcp2/server",
+  "name": "@mcp2/cli",
   "version": "0.1.0",
-  "description": "MCP2 server runtime with progressive disclosure",
+  "description": "MCP2 CLI — inspect, test, and benchmark MCP2 servers",
   "type": "module",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "bin": {
+    "mcp2": "dist/cli.js"
+  },
   "scripts": {
     "build": "tsc --build",
     "test": "vitest run || true"
   },
   "dependencies": {
+    "@mcp2/client": "^0.1.0",
     "@mcp2/core": "^0.1.0"
   }
 }

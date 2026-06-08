@@ -5,7 +5,11 @@ export interface EncodingNegotiationResult {
   schemaHashReferencing: boolean;
 }
 
-// Short-key mapping for compact-json — reduces JSON payload ~30-40%
+/**
+ * Short-key map for compact-json encoding.
+ * Applied to JSON keys before serialization — reduces payload ~30-40%.
+ * Keys chosen to be unambiguous even in mixed payloads.
+ */
 export const COMPACT_KEY_MAP: Record<string, string> = {
   jsonrpc: "j",
   method: "m",
@@ -18,6 +22,11 @@ export const COMPACT_KEY_MAP: Record<string, string> = {
   name: "n",
   description: "d",
   inputSchema: "s",
+  outputSchema: "os",
+  tools: "t",
+  content: "cnt",
+  type: "tp",
+  text: "tx",
 };
 
 export const COMPACT_KEY_REVERSE = Object.fromEntries(

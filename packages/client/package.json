@@ -1,7 +1,7 @@
 {
-  "name": "@mcp2/server",
+  "name": "@mcp2/client",
   "version": "0.1.0",
-  "description": "MCP2 server runtime with progressive disclosure",
+  "description": "MCP2 client with progressive disclosure",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -11,5 +11,8 @@
   },
   "dependencies": {
     "@mcp2/core": "^0.1.0"
+  },
+  "devDependencies": {
+    "vitest": "^2.0.0"
   }
 }

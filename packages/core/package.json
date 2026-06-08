@@ -2,10 +2,21 @@
   "name": "@mcp2/core",
   "version": "0.1.0",
   "description": "Core MCP2 protocol types, transport, and progressive disclosure",
+  "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./benchmark": {
+      "import": "./dist/benchmark/token-counter.js",
+      "types": "./dist/benchmark/token-counter.d.ts"
+    }
+  },
   "scripts": {
-    "build": "tsc",
+    "build": "tsc --build",
     "test": "vitest run",
     "dev": "tsc --watch"
   },

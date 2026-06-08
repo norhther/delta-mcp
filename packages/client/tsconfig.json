@@ -5,15 +5,13 @@
     "moduleResolution": "NodeNext",
     "strict": true,
     "declaration": true,
+    "composite": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
-    "noEmit": true
+    "rootDir": "src",
+    "outDir": "dist"
   },
-  "include": [],
-  "references": [
-    { "path": "./packages/core" },
-    { "path": "./packages/server" },
-    { "path": "./packages/client" },
-    { "path": "./packages/cli" }
-  ]
+  "include": ["src/**/*"],
+  "exclude": ["dist", "node_modules"],
+  "references": [{ "path": "../core" }]
 }
