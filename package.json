@@ -2,6 +2,7 @@
   "name": "mcp2",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "description": "Token-efficient MCP reimplementation",
   "workspaces": [
     "packages/*"

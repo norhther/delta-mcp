@@ -49,7 +49,6 @@ export function buildWWWAuthenticate(resourceMetadataUrl: string): string {
  * Validate bearer token against introspection endpoint or local JWKS.
  * Stub — wire up to your AS's introspection endpoint or JWT validation.
  */
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 export async function validateToken(
   token: string,
   resourceUrl: string

@@ -4,18 +4,14 @@
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
     "strict": true,
-    "exactOptionalPropertyTypes": true,
-    "noUncheckedIndexedAccess": true,
     "declaration": true,
-    "outDir": "dist",
-    "rootDir": "src",
     "esModuleInterop": true,
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    "noEmit": true
   },
+  "include": [],
   "references": [
     { "path": "./packages/core" },
-    { "path": "./packages/server" },
-    { "path": "./packages/client" },
-    { "path": "./packages/cli" }
+    { "path": "./packages/server" }
   ]
 }
