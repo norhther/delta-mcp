@@ -1,0 +1,20 @@
+{
+  "name": "@mcp2/conformance",
+  "version": "0.1.0",
+  "description": "MCP2 conformance suite and E2E benchmarks",
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "bench": "node harness/bench-runner.js"
+  },
+  "dependencies": {
+    "@mcp2/client": "^0.1.0",
+    "@mcp2/core": "^0.1.0",
+    "@mcp2/server": "^0.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.0.0"
+  }
+}

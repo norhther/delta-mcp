@@ -5,11 +5,13 @@
   "type": "module",
   "description": "Token-efficient MCP reimplementation",
   "workspaces": [
-    "packages/*"
+    "packages/*",
+    "conformance"
   ],
   "scripts": {
-    "build": "npm run build --workspaces",
-    "test": "npm run test --workspaces",
+    "build": "npm run build --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "conformance": "cd conformance && vitest run --config vitest.config.ts",
     "lint": "eslint packages/*/src/**/*.ts",
     "typecheck": "tsc --build"
   },
