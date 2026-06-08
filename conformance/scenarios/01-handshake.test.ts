@@ -4,7 +4,7 @@
  */
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { createServerFixture, type ServerFixture } from "../harness/server-fixture.js";
-import { MCP2_PROTOCOL_VERSION } from "@delta-mcp/core";
+import { DELTA_PROTOCOL_VERSION } from "@delta-mcp/core";
 
 describe("CS-01: Initialize handshake", () => {
   let fx: ServerFixture;
@@ -12,7 +12,7 @@ describe("CS-01: Initialize handshake", () => {
   afterAll(async () => { await fx.teardown(); });
 
   it("CS-01-01: server returns protocolVersion", () => {
-    expect(fx.client.sessionInfo.protocolVersion).toBe(MCP2_PROTOCOL_VERSION);
+    expect(fx.client.sessionInfo.protocolVersion).toBe(DELTA_PROTOCOL_VERSION);
   });
 
   it("CS-01-02: server returns serverInfo.name and serverInfo.version", () => {

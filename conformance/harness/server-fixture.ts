@@ -1,4 +1,4 @@
-import { MCP2Client, StdioClientTransport } from "@delta-mcp/client";
+import { DeltaClient, StdioClientTransport } from "@delta-mcp/client";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
 
@@ -6,7 +6,7 @@ const __dir = dirname(fileURLToPath(import.meta.url));
 const DEMO_SERVER = join(__dir, "../../packages/server/dist/demo.js");
 
 export interface ServerFixture {
-  client: MCP2Client;
+  client: DeltaClient;
   transport: StdioClientTransport;
   teardown: () => Promise<void>;
 }
@@ -14,7 +14,7 @@ export interface ServerFixture {
 /** Spin up demo server, initialize client, return fixture for use in tests */
 export async function createServerFixture(): Promise<ServerFixture> {
   const transport = new StdioClientTransport("node", [DEMO_SERVER]);
-  const client = new MCP2Client(transport);
+  const client = new DeltaClient(transport);
   await client.initialize();
   return {
     client,

@@ -3,7 +3,7 @@ import {
   StdioTransport,
   handleToolResult,
   detectAndHandleRateLimit,
-  MCP2_PROTOCOL_VERSION,
+  DELTA_PROTOCOL_VERSION,
   MCP_BASELINE_VERSION,
   ErrorCodes,
   type JsonRpcRequest,
@@ -13,7 +13,7 @@ import {
   type ResultHandlerOptions,
 } from "@delta-mcp/core";
 
-export interface MCP2ServerOptions {
+export interface DeltaServerOptions {
   name: string;
   version: string;
   capabilities?: ServerCapabilities;
@@ -27,11 +27,11 @@ export interface MCP2ServerOptions {
  * disclosure extension. Drop-in replacement for standard MCP servers;
  * falls back gracefully for clients that don't negotiate MCP2 capabilities.
  */
-export class MCP2Server {
+export class DeltaServer {
   private registry = new ProgressiveToolRegistry();
   private clientProgressiveDisclosure = false;
 
-  constructor(private opts: MCP2ServerOptions) {}
+  constructor(private opts: DeltaServerOptions) {}
 
   tool(definition: ToolDefinition): this {
     this.registry.register(definition);
@@ -87,7 +87,7 @@ export class MCP2Server {
       jsonrpc: "2.0",
       id: id as any,
       result: {
-        protocolVersion: MCP2_PROTOCOL_VERSION,
+        protocolVersion: DELTA_PROTOCOL_VERSION,
         baselineVersion: MCP_BASELINE_VERSION,
         serverInfo: { name: this.opts.name, version: this.opts.version },
         capabilities: this.capabilities(),
@@ -170,7 +170,7 @@ export class MCP2Server {
   // Subclass or compose to provide actual tool implementations
   protected async callTool(name: string, args: unknown): Promise<unknown> {
     void name; void args;
-    throw new Error("callTool not implemented — compose MCP2Server with tool handlers");
+    throw new Error("callTool not implemented — compose DeltaServer with tool handlers");
   }
 
   startStdio(): void {

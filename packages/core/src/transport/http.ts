@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from "http";
 import type { JsonRpcRequest, JsonRpcResponse } from "../protocol/types.js";
-import { MCP2_PROTOCOL_VERSION } from "../protocol/types.js";
+import { DELTA_PROTOCOL_VERSION } from "../protocol/types.js";
 
 export type HttpMessageHandler = (
   msg: JsonRpcRequest,
@@ -22,7 +22,7 @@ export function createHttpHandler(handler: HttpMessageHandler) {
       return;
     }
 
-    res.setHeader("MCP-Protocol-Version", MCP2_PROTOCOL_VERSION);
+    res.setHeader("MCP-Protocol-Version", DELTA_PROTOCOL_VERSION);
 
     // SSE stream for server-initiated messages
     if (req.method === "GET" && req.headers.accept?.includes("text/event-stream")) {

@@ -10,7 +10,7 @@
  *   delta-mcp bench <cmd> [args...]     Run token efficiency benchmark
  */
 
-import { MCP2Client, StdioClientTransport } from "@delta-mcp/client";
+import { DeltaClient, StdioClientTransport } from "@delta-mcp/client";
 import { benchmarkToolDiscovery, formatBenchmark, estimateTokens } from "@delta-mcp/core/benchmark";
 
 const [, , command, ...rest] = process.argv;
@@ -144,9 +144,9 @@ async function cmdBench(args: string[]): Promise<void> {
 async function connect(
   serverCmd: string,
   serverArgs: string[]
-): Promise<{ client: MCP2Client; transport: StdioClientTransport }> {
+): Promise<{ client: DeltaClient; transport: StdioClientTransport }> {
   const transport = new StdioClientTransport(serverCmd, serverArgs);
-  const client = new MCP2Client(transport);
+  const client = new DeltaClient(transport);
   await client.initialize();
   return { client, transport };
 }

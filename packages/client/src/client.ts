@@ -4,7 +4,7 @@ import type {
   ServerCapabilities,
   ClientCapabilities,
 } from "@delta-mcp/core";
-import { MCP2_PROTOCOL_VERSION } from "@delta-mcp/core";
+import { DELTA_PROTOCOL_VERSION } from "@delta-mcp/core";
 import type { StdioClientTransport, HttpClientTransport } from "./transport.js";
 
 export type Transport = Pick<StdioClientTransport | HttpClientTransport, "send"> & {
@@ -29,7 +29,7 @@ export interface SessionInfo {
  * Standard mode (legacy server):
  *   listTools() → full schemas (standard MCP behavior)
  */
-export class MCP2Client {
+export class DeltaClient {
   private session?: SessionInfo;
   private schemaCache = new Map<string, ToolDefinition>();
 
@@ -47,7 +47,7 @@ export class MCP2Client {
     };
 
     const res = await this.transport.send("initialize", {
-      protocolVersion: MCP2_PROTOCOL_VERSION,
+      protocolVersion: DELTA_PROTOCOL_VERSION,
       clientInfo,
       capabilities: clientCaps,
     });

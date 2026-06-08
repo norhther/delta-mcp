@@ -101,9 +101,9 @@ npm install @delta-mcp/server @delta-mcp/client
 ```
 
 ```typescript
-import { MCP2Server } from "@delta-mcp/server";
+import { DeltaServer } from "@delta-mcp/server";
 
-class MyServer extends MCP2Server {
+class MyServer extends DeltaServer {
   constructor() {
     super({
       name: "my-server",
@@ -172,8 +172,8 @@ npx @delta-mcp/cli bench   node ./server.js                        # benchmark
 | Package | Purpose |
 |---------|---------|
 | `@delta-mcp/core` | Types, transport, progressive disclosure, encoding, auth, result handler |
-| `@delta-mcp/server` | `MCP2Server` base class — protocol + result handling wired in |
-| `@delta-mcp/client` | `MCP2Client` with schema cache and capability negotiation |
+| `@delta-mcp/server` | `DeltaServer` base class — protocol + result handling wired in |
+| `@delta-mcp/client` | `DeltaClient` with schema cache and capability negotiation |
 | `@delta-mcp/cli` | `delta-mcp` CLI for inspect, test, benchmark |
 
 ## Conformance

@@ -1,9 +1,9 @@
 /**
- * Integration test: MCP2Client ↔ MCP2Server over stdio.
+ * Integration test: DeltaClient ↔ DeltaServer over stdio.
  * Also serves as Phase 1 baseline benchmark — logs token estimates.
  */
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { MCP2Client } from "./client.js";
+import { DeltaClient } from "./client.js";
 import { StdioClientTransport } from "./transport.js";
 import { fileURLToPath } from "url";
 import { join, dirname } from "path";
@@ -17,11 +17,11 @@ function tokenEstimate(obj: unknown): number {
 
 describe("MCP2 client ↔ server integration", () => {
   let transport: StdioClientTransport;
-  let client: MCP2Client;
+  let client: DeltaClient;
 
   beforeAll(async () => {
     transport = new StdioClientTransport("node", [SERVER]);
-    client = new MCP2Client(transport);
+    client = new DeltaClient(transport);
   });
 
   afterAll(async () => {

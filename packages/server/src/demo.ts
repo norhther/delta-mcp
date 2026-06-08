@@ -4,9 +4,9 @@
  * Schemas are realistic (property descriptions, enums, nested objects) to
  * produce representative token benchmark numbers.
  */
-import { MCP2Server } from "./index.js";
+import { DeltaServer } from "./index.js";
 
-class DemoServer extends MCP2Server {
+class DemoServer extends DeltaServer {
   constructor() {
     super({
       name: "delta-mcp-demo",
