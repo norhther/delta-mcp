@@ -1,62 +1,207 @@
 import type { RateLimitResult } from "../protocol/types.js";
 
 export interface ResultHandlerOptions {
-  maxTokens?: number; // approx chars before summarization kicks in
+  /** Approximate token budget. Results exceeding this are summarized. Default: 500 */
+  maxTokens?: number;
+  /** Array length before pagination. Default: 50 */
   paginateAfter?: number;
+  /** For paginated requests — which page to return (1-indexed) */
+  page?: number;
+  /** Override page size for this call */
+  pageSize?: number;
 }
 
-const DEFAULT_MAX_TOKENS = 2000; // ~500 tokens at 4 chars/token
+export interface TruncatedResult {
+  truncated: true;
+  totalChars: number;
+  estimatedTokens: number;
+  preview: string;
+  note: string;
+}
+
+export interface PaginatedResult {
+  paginated: true;
+  totalItems: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+  hasMore: boolean;
+  items: unknown[];
+  note: string;
+}
+
+const CHARS_PER_TOKEN = 4;
+const DEFAULT_MAX_TOKENS = 500;
+const DEFAULT_PAGE_SIZE = 50;
+
+function estimateTokens(value: unknown): number {
+  return Math.ceil(JSON.stringify(value).length / CHARS_PER_TOKEN);
+}
 
 /**
- * Keeps large tool results out of context.
- * Summarize/paginate before routing through LLM context — the other half
- * of the token-efficiency story (tool-definition bloat is the first half).
+ * Result handler — keeps large tool outputs out of LLM context.
+ *
+ * Handles:
+ * - Strings over budget → truncated with preview
+ * - Arrays over page size → paginated with navigation metadata
+ * - Objects over budget → deep summarization (keys + value previews)
+ * - Rate limits → reasoner-friendly result (see handleRateLimit)
+ *
+ * All truncation/pagination metadata gives the model enough to
+ * request the rest in a follow-up call with explicit params.
  */
 export function handleToolResult(
   result: unknown,
   opts: ResultHandlerOptions = {}
 ): unknown {
-  const maxChars = (opts.maxTokens ?? DEFAULT_MAX_TOKENS) * 4;
+  const maxTokens = opts.maxTokens ?? DEFAULT_MAX_TOKENS;
+  const maxChars = maxTokens * CHARS_PER_TOKEN;
+  const pageSize = opts.pageSize ?? opts.paginateAfter ?? DEFAULT_PAGE_SIZE;
+  const page = opts.page ?? 1;
 
-  if (typeof result === "string" && result.length > maxChars) {
-    return summarizeString(result, maxChars);
+  // Strings
+  if (typeof result === "string") {
+    if (result.length > maxChars) return truncateString(result, maxChars, maxTokens);
+    return result;
   }
 
-  if (Array.isArray(result) && result.length > (opts.paginateAfter ?? 50)) {
-    return paginateArray(result, opts.paginateAfter ?? 50);
+  // Arrays — paginate before token check (structure matters more than raw size)
+  if (Array.isArray(result)) {
+    if (result.length > pageSize) return paginateArray(result, page, pageSize);
+    // Small array that's still too large in tokens
+    if (estimateTokens(result) > maxTokens) return truncateJson(result, maxChars, maxTokens);
+    return result;
+  }
+
+  // Objects — check token budget, then deep-summarize if over
+  if (typeof result === "object" && result !== null) {
+    if (estimateTokens(result) > maxTokens) return summarizeObject(result as Record<string, unknown>, maxChars, maxTokens);
+    return result;
   }
 
   return result;
 }
 
-/** Convert upstream 429 into a reasoner-friendly result, not a crash */
+/** Convert upstream 429 into a reasoner-friendly result, not an error */
 export function handleRateLimit(
   retryAfterSeconds: number,
-  upstream: string
+  upstream: string,
+  opts: { message?: string } = {}
 ): RateLimitResult {
   return {
     type: "rate_limited",
     retryAfterSeconds,
     upstream,
+    ...(opts.message && { message: opts.message }),
   };
 }
 
-function summarizeString(s: string, maxChars: number): Record<string, unknown> {
+/**
+ * Detect rate-limit from common upstream response shapes.
+ * Converts to RateLimitResult so the agent loop doesn't crash.
+ */
+export function detectAndHandleRateLimit(
+  error: unknown,
+  upstream: string
+): RateLimitResult | null {
+  if (!error || typeof error !== "object") return null;
+
+  const e = error as Record<string, unknown>;
+  const status = (e["status"] ?? e["statusCode"]) as number | undefined;
+  if (status !== 429) return null;
+
+  const retryAfter =
+    parseInt(
+      ((e["headers"] as Record<string, string> | undefined)?.["retry-after"] ??
+        (e["retryAfter"] as string | undefined) ??
+        "30"),
+      10
+    ) || 30;
+
+  const message = (e["message"] as string | undefined) ?? "Rate limit exceeded";
+  return handleRateLimit(retryAfter, upstream, { message });
+}
+
+// ── Private helpers ───────────────────────────────────────────────────────────
+
+function truncateString(s: string, maxChars: number, maxTokens: number): TruncatedResult {
   return {
     truncated: true,
     totalChars: s.length,
+    estimatedTokens: Math.ceil(s.length / CHARS_PER_TOKEN),
     preview: s.slice(0, maxChars),
-    note: `Result truncated to ~${Math.round(maxChars / 4)} tokens. Request with pagination params for full data.`,
+    note: `String truncated to ~${maxTokens} tokens (${maxChars} chars). Full length: ${s.length} chars (~${Math.ceil(s.length / CHARS_PER_TOKEN)} tokens).`,
   };
 }
 
-function paginateArray(arr: unknown[], pageSize: number): Record<string, unknown> {
+function truncateJson(value: unknown, maxChars: number, maxTokens: number): TruncatedResult {
+  const serialized = JSON.stringify(value, null, 2);
+  return {
+    truncated: true,
+    totalChars: serialized.length,
+    estimatedTokens: Math.ceil(serialized.length / CHARS_PER_TOKEN),
+    preview: serialized.slice(0, maxChars),
+    note: `JSON result truncated to ~${maxTokens} tokens. Total: ~${Math.ceil(serialized.length / CHARS_PER_TOKEN)} tokens.`,
+  };
+}
+
+function paginateArray(arr: unknown[], page: number, pageSize: number): PaginatedResult {
+  const totalPages = Math.ceil(arr.length / pageSize);
+  const clampedPage = Math.max(1, Math.min(page, totalPages));
+  const start = (clampedPage - 1) * pageSize;
+  const items = arr.slice(start, start + pageSize);
+
   return {
     paginated: true,
     totalItems: arr.length,
-    page: 1,
+    page: clampedPage,
     pageSize,
-    items: arr.slice(0, pageSize),
-    note: `Showing ${pageSize} of ${arr.length} items. Pass page param for more.`,
+    totalPages,
+    hasMore: clampedPage < totalPages,
+    items,
+    note: `Page ${clampedPage}/${totalPages}. ${arr.length} total items. Pass page=${clampedPage + 1} for next page.`,
   };
+}
+
+function summarizeObject(
+  obj: Record<string, unknown>,
+  maxChars: number,
+  maxTokens: number
+): Record<string, unknown> {
+  const keys = Object.keys(obj);
+  const summary: Record<string, unknown> = {
+    _summarized: true,
+    _totalKeys: keys.length,
+    _estimatedTokens: estimateTokens(obj),
+    _note: `Object exceeded ~${maxTokens} token budget. Showing key structure and value previews.`,
+  };
+
+  let budget = maxChars;
+  for (const key of keys) {
+    const val = obj[key];
+    const preview = previewValue(val);
+    const cost = JSON.stringify({ [key]: preview }).length;
+
+    if (budget - cost < 0) {
+      summary["_truncatedKeys"] = keys.length - Object.keys(summary).length + 4; // +4 for meta keys
+      break;
+    }
+
+    summary[key] = preview;
+    budget -= cost;
+  }
+
+  return summary;
+}
+
+function previewValue(val: unknown): unknown {
+  if (val === null || val === undefined) return val;
+  if (typeof val === "string") return val.length > 100 ? val.slice(0, 100) + "…" : val;
+  if (typeof val === "number" || typeof val === "boolean") return val;
+  if (Array.isArray(val)) return `[Array(${val.length})]`;
+  if (typeof val === "object") {
+    const keys = Object.keys(val as object);
+    return `{Object: ${keys.slice(0, 5).join(", ")}${keys.length > 5 ? ", ..." : ""}}`;
+  }
+  return String(val);
 }

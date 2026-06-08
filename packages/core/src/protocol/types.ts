@@ -84,4 +84,5 @@ export interface RateLimitResult {
   type: "rate_limited";
   retryAfterSeconds: number;
   upstream: string;
+  message?: string;
 }

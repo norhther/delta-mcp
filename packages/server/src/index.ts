@@ -2,6 +2,7 @@ import {
   ProgressiveToolRegistry,
   StdioTransport,
   handleToolResult,
+  detectAndHandleRateLimit,
   MCP2_PROTOCOL_VERSION,
   MCP_BASELINE_VERSION,
   ErrorCodes,
@@ -9,6 +10,7 @@ import {
   type JsonRpcResponse,
   type ServerCapabilities,
   type ToolDefinition,
+  type ResultHandlerOptions,
 } from "@mcp2/core";
 
 export interface MCP2ServerOptions {
@@ -16,6 +18,8 @@ export interface MCP2ServerOptions {
   version: string;
   capabilities?: ServerCapabilities;
   transport?: "stdio" | "http";
+  /** Default result handler options applied to every tool call */
+  resultHandler?: ResultHandlerOptions;
 }
 
 /**
@@ -130,30 +134,35 @@ export class MCP2Server {
     }
 
     // Tool execution delegated to registered handler
-    // Result goes through summarizer before hitting context
+    // Result passes through summarizer before hitting LLM context
     try {
       const rawResult = await this.callTool(name, args);
-      const result = handleToolResult(rawResult);
+
+      // Merge per-call pagination params from tool args into result handler opts
+      const callArgs = args as Record<string, unknown> | undefined;
+      const resultOpts: ResultHandlerOptions = {
+        ...this.opts.resultHandler,
+        ...(callArgs?.["page"] !== undefined && { page: Number(callArgs["page"]) }),
+        ...(callArgs?.["pageSize"] !== undefined && { pageSize: Number(callArgs["pageSize"]) }),
+      };
+
+      const result = handleToolResult(rawResult, resultOpts);
       return { jsonrpc: "2.0", id: id as any, result: { content: [{ type: "text", text: JSON.stringify(result) }] } };
-    } catch (err: any) {
-      // Rate limit from upstream — reasoner-friendly, not a crash
-      if (err?.status === 429) {
-        const retryAfter = parseInt(err.headers?.["retry-after"] ?? "30", 10);
+    } catch (err: unknown) {
+      // Rate limit from upstream — convert to reasoner-friendly result, not a crash
+      const rl = detectAndHandleRateLimit(err, name);
+      if (rl) {
         return {
           jsonrpc: "2.0",
           id: id as any,
-          result: {
-            content: [{
-              type: "text",
-              text: JSON.stringify({ type: "rate_limited", retryAfterSeconds: retryAfter, upstream: name }),
-            }],
-          },
+          result: { content: [{ type: "text", text: JSON.stringify(rl) }] },
         };
       }
+      const message = err instanceof Error ? err.message : "Tool execution failed";
       return {
         jsonrpc: "2.0",
         id: id as any,
-        error: { code: ErrorCodes.INTERNAL_ERROR, message: err?.message ?? "Tool execution failed" },
+        error: { code: ErrorCodes.INTERNAL_ERROR, message },
       };
     }
   }
