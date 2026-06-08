@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { handleToolResult, handleRateLimit } from "@mcp2/core";
+import { handleToolResult, handleRateLimit } from "./result-handler/summarizer.js";
 
 describe("Result handler — Phase 5 conformance", () => {
   it("passes small results through unchanged", () => {

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { ProgressiveToolRegistry } from "@mcp2/core";
+import { ProgressiveToolRegistry } from "./discovery/progressive.js";
 
 describe("Progressive disclosure — Phase 2 conformance", () => {
   it("rejects descriptions > 60 chars", () => {

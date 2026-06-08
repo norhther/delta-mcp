@@ -3,3 +3,10 @@ dist/
 *.tsbuildinfo
 .env
 .DS_Store
+# Compiled JS/DTS in src directories (tsc output)
+packages/*/src/**/*.js
+packages/*/src/**/*.d.ts
+conformance/**/*.js
+conformance/**/*.d.ts
+examples/**/*.js
+examples/**/*.d.ts
