@@ -1,5 +1,5 @@
 {
-  "name": "@mcp2/client",
+  "name": "@delta-mcp/client",
   "version": "0.1.0",
   "description": "MCP2 client with progressive disclosure",
   "type": "module",
@@ -10,7 +10,7 @@
     "test": "vitest run || true"
   },
   "dependencies": {
-    "@mcp2/core": "^0.1.0"
+    "@delta-mcp/core": "^0.1.0"
   },
   "devDependencies": {
     "vitest": "^2.0.0"

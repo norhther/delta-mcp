@@ -117,7 +117,7 @@ Binary CBOR also available via `cbor-x` (optional dependency, same auto-fallback
 ## Quick Start
 
 ```typescript
-import { MCP2Server } from "@mcp2/server";
+import { MCP2Server } from "@delta-mcp/server";
 
 class MyServer extends MCP2Server {
   constructor() {
@@ -155,10 +155,10 @@ new MyServer().startStdio();
 ## CLI
 
 ```bash
-npx @mcp2/cli list   node ./server.js          # list tools (progressive mode)
-npx @mcp2/cli describe node ./server.js search # full schema for one tool
-npx @mcp2/cli call   node ./server.js search '{"query":"mcp"}' # call a tool
-npx @mcp2/cli bench  node ./server.js          # token efficiency benchmark
+npx @delta-mcp/cli list   node ./server.js          # list tools (progressive mode)
+npx @delta-mcp/cli describe node ./server.js search # full schema for one tool
+npx @delta-mcp/cli call   node ./server.js search '{"query":"mcp"}' # call a tool
+npx @delta-mcp/cli bench  node ./server.js          # token efficiency benchmark
 ```
 
 ## Phased Roadmap

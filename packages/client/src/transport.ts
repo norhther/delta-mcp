@@ -1,6 +1,6 @@
 import { spawn, type ChildProcess } from "child_process";
 import { createInterface } from "readline";
-import type { JsonRpcRequest, JsonRpcResponse } from "@mcp2/core";
+import type { JsonRpcRequest, JsonRpcResponse } from "@delta-mcp/core";
 
 export type PendingRequest = {
   resolve: (v: JsonRpcResponse) => void;
@@ -85,7 +85,7 @@ export class HttpClientTransport {
     const msg: JsonRpcRequest = { jsonrpc: "2.0", id, method, params };
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
-      "MCP-Protocol-Version": "mcp2/0.1.0",
+      "MCP-Protocol-Version": "delta-mcp/0.1.0",
     };
     if (this.token) headers["Authorization"] = `Bearer ${this.token}`;
 

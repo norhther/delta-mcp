@@ -27,7 +27,7 @@ export const JsonRpcResponseSchema = z.object({
 export type JsonRpcResponse = z.infer<typeof JsonRpcResponseSchema>;
 
 // MCP2 protocol version
-export const MCP2_PROTOCOL_VERSION = "mcp2/0.1.0";
+export const MCP2_PROTOCOL_VERSION = "delta-mcp/0.1.0";
 export const MCP_BASELINE_VERSION = "2025-11-25";
 
 // Standard error codes (aligned with spec convergence: -32002 → -32602)

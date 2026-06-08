@@ -4,7 +4,7 @@
  */
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { createServerFixture, type ServerFixture } from "../harness/server-fixture.js";
-import { MCP2_PROTOCOL_VERSION } from "@mcp2/core";
+import { MCP2_PROTOCOL_VERSION } from "@delta-mcp/core";
 
 describe("CS-01: Initialize handshake", () => {
   let fx: ServerFixture;

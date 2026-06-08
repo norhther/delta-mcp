@@ -1,4 +1,4 @@
-import { MCP2Client, StdioClientTransport } from "@mcp2/client";
+import { MCP2Client, StdioClientTransport } from "@delta-mcp/client";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
 

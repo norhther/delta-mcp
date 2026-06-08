@@ -46,7 +46,7 @@ export function createHttpHandler(handler: HttpMessageHandler) {
     if (!auth?.startsWith("Bearer ")) {
       res.writeHead(401, {
         "WWW-Authenticate":
-          'Bearer realm="mcp2", resource_metadata="/.well-known/oauth-protected-resource"',
+          'Bearer realm="delta-mcp", resource_metadata="/.well-known/oauth-protected-resource"',
       });
       res.end();
       return;

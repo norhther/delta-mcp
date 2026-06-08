@@ -9,7 +9,7 @@ import { MCP2Server } from "./index.js";
 class DemoServer extends MCP2Server {
   constructor() {
     super({
-      name: "mcp2-demo",
+      name: "delta-mcp-demo",
       version: "0.1.0",
       resultHandler: { maxTokens: 500, paginateAfter: 50 },
     });

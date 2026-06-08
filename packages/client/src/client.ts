@@ -3,8 +3,8 @@ import type {
   ToolDefinition,
   ServerCapabilities,
   ClientCapabilities,
-} from "@mcp2/core";
-import { MCP2_PROTOCOL_VERSION } from "@mcp2/core";
+} from "@delta-mcp/core";
+import { MCP2_PROTOCOL_VERSION } from "@delta-mcp/core";
 import type { StdioClientTransport, HttpClientTransport } from "./transport.js";
 
 export type Transport = Pick<StdioClientTransport | HttpClientTransport, "send"> & {
@@ -35,7 +35,7 @@ export class MCP2Client {
 
   constructor(private transport: Transport) {}
 
-  async initialize(clientInfo: { name: string; version: string } = { name: "mcp2-client", version: "0.1.0" }): Promise<SessionInfo> {
+  async initialize(clientInfo: { name: string; version: string } = { name: "delta-mcp-client", version: "0.1.0" }): Promise<SessionInfo> {
     const caps: ClientCapabilities = {
       encoding: { compactJson: true },
       codeExecution: true,

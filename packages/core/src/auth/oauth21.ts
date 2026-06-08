@@ -66,7 +66,7 @@ export function buildWWWAuthenticate(
   resourceMetadataUrl: string,
   opts: { error?: string; errorDescription?: string } = {}
 ): string {
-  let header = `Bearer realm="mcp2", resource_metadata="${resourceMetadataUrl}"`;
+  let header = `Bearer realm="delta-mcp", resource_metadata="${resourceMetadataUrl}"`;
   if (opts.error) header += `, error="${opts.error}"`;
   if (opts.errorDescription) header += `, error_description="${opts.errorDescription}"`;
   return header;

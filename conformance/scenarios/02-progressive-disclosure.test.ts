@@ -5,7 +5,7 @@
  */
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { createServerFixture, type ServerFixture } from "../harness/server-fixture.js";
-import { ProgressiveToolRegistry } from "@mcp2/core";
+import { ProgressiveToolRegistry } from "@delta-mcp/core";
 
 describe("CS-02: Progressive disclosure", () => {
   let fx: ServerFixture;

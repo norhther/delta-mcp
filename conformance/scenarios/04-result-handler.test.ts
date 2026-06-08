@@ -7,7 +7,7 @@ import {
   handleToolResult,
   handleRateLimit,
   detectAndHandleRateLimit,
-} from "@mcp2/core";
+} from "@delta-mcp/core";
 
 describe("CS-04: Result handler", () => {
   // ── Pass-through ────────────────────────────────────────────────────────────

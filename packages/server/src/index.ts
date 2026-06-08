@@ -11,7 +11,7 @@ import {
   type ServerCapabilities,
   type ToolDefinition,
   type ResultHandlerOptions,
-} from "@mcp2/core";
+} from "@delta-mcp/core";
 
 export interface MCP2ServerOptions {
   name: string;

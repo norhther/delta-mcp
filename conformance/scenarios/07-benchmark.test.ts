@@ -15,8 +15,8 @@ import {
   benchmarkEncoding,
   estimateTokens,
   formatBenchmark,
-} from "@mcp2/core";
-import type { ToolDefinition } from "@mcp2/core";
+} from "@delta-mcp/core";
+import type { ToolDefinition } from "@delta-mcp/core";
 
 describe("CS-07: Phase 6 benchmark", () => {
   let fx: ServerFixture;

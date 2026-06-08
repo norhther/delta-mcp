@@ -9,7 +9,7 @@ import {
   decodeCompact,
   getCodec,
   COMPACT_KEY_MAP,
-} from "@mcp2/core";
+} from "@delta-mcp/core";
 
 describe("CS-05: Wire encoding", () => {
   it("CS-05-01: negotiation selects CBOR when both sides support it", () => {

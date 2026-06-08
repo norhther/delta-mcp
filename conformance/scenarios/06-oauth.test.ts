@@ -7,7 +7,7 @@ import {
   buildPRMDocument,
   buildWWWAuthenticate,
   validateToken,
-} from "@mcp2/core";
+} from "@delta-mcp/core";
 
 const RESOURCE_URL = "https://mcp2.example.com";
 const AS_URL = "https://auth.example.com";
@@ -38,7 +38,7 @@ describe("CS-06: OAuth 2.1 resource-server", () => {
 
   it("CS-06-03: WWW-Authenticate header contains realm and resource_metadata", () => {
     const header = buildWWWAuthenticate(PRM_URL);
-    expect(header).toContain('Bearer realm="mcp2"');
+    expect(header).toContain('Bearer realm="delta-mcp"');
     expect(header).toContain(`resource_metadata="${PRM_URL}"`);
   });
 

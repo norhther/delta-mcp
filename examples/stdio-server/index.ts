@@ -1,8 +1,8 @@
-import { MCP2Server } from "@mcp2/server";
+import { MCP2Server } from "@delta-mcp/server";
 
 class DemoServer extends MCP2Server {
   constructor() {
-    super({ name: "mcp2-demo", version: "0.1.0" });
+    super({ name: "delta-mcp-demo", version: "0.1.0" });
 
     this.tool({
       name: "search",
