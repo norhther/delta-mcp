@@ -32,33 +32,44 @@ export class StdioTransport {
   }
 
   start(): void {
-    this.rl.on("line", async (line) => {
-      const trimmed = line.trim();
-      if (!trimmed) return;
-
-      let msg: JsonRpcRequest;
-      try {
-        msg = this.codec.decode(trimmed) as JsonRpcRequest;
-      } catch {
-        this.send({
-          jsonrpc: "2.0",
-          id: null,
-          error: { code: -32700, message: "Parse error" },
-        });
-        return;
-      }
-
-      const response = await this.handler(msg);
-      if (response) this.send(response);
-
-      // Apply a handshake-scheduled codec switch only after the reply is out.
-      if (this.pendingCodec) {
-        this.codec = this.pendingCodec;
-        this.pendingCodec = null;
-      }
+    // Process lines strictly in order. readline fires "line" without awaiting
+    // the async handler, so without this chain a pipelined second line could be
+    // decoded with a stale codec before a handshake-scheduled switch is applied.
+    let queue: Promise<void> = Promise.resolve();
+    this.rl.on("line", (line) => {
+      queue = queue.then(() => this.processLine(line));
     });
 
-    this.rl.on("close", () => process.exit(0));
+    this.rl.on("close", () => {
+      // Drain in-flight work before exiting so a final reply isn't dropped.
+      queue.finally(() => process.exit(0));
+    });
+  }
+
+  private async processLine(line: string): Promise<void> {
+    const trimmed = line.trim();
+    if (!trimmed) return;
+
+    let msg: JsonRpcRequest;
+    try {
+      msg = this.codec.decode(trimmed) as JsonRpcRequest;
+    } catch {
+      this.send({
+        jsonrpc: "2.0",
+        id: null,
+        error: { code: -32700, message: "Parse error" },
+      });
+      return;
+    }
+
+    const response = await this.handler(msg);
+    if (response) this.send(response);
+
+    // Apply a handshake-scheduled codec switch only after the reply is out.
+    if (this.pendingCodec) {
+      this.codec = this.pendingCodec;
+      this.pendingCodec = null;
+    }
   }
 
   send(msg: JsonRpcResponse): void {

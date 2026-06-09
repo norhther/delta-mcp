@@ -9,6 +9,7 @@ import {
   getStdioCodec,
   getCodec,
   getCodecForContentType,
+  MCP_BASELINE_VERSION,
 } from "@delta-mcp/core";
 
 export type PendingRequest = {
@@ -135,7 +136,7 @@ export class HttpClientTransport {
       "Content-Type": this.codec.contentType,
       // Advertise what we can decode; server may answer in any of these.
       Accept: `${this.codec.contentType}, application/json`,
-      "MCP-Protocol-Version": "delta-mcp/0.1.0",
+      "MCP-Protocol-Version": MCP_BASELINE_VERSION,
     };
     if (this.token) headers["Authorization"] = `Bearer ${this.token}`;
     return headers;

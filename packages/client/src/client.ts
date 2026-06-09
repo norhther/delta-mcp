@@ -133,9 +133,16 @@ export class DeltaClient {
     const res = await this.transport.send("tools/call", { name, arguments: args });
     if (res.error) throw new Error(`tools/call failed: ${res.error.message}`);
 
-    const content = (res.result as { content: Array<{ type: string; text: string }> }).content;
-    const text = content.find((c) => c.type === "text")?.text;
-    return text ? JSON.parse(text) : res.result;
+    const content = (res.result as { content?: Array<{ type: string; text: string }> }).content;
+    const text = content?.find((c) => c.type === "text")?.text;
+    if (text === undefined) return res.result;
+    // Our own server JSON-stringifies structured results, but a standard MCP
+    // server may return plain text — fall back to the raw string if not JSON.
+    try {
+      return JSON.parse(text);
+    } catch {
+      return text;
+    }
   }
 
   clearSchemaCache(): void {
