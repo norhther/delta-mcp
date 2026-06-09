@@ -110,7 +110,7 @@ createHttpHandler(handler, {
 
 **Presence-only (dev)** — without `oauth`, the bearer check is presence-only: any non-empty token passes. Dev-grade. A `validateToken` hook narrows it without the full PRM machinery; set `authRequired: false` for an explicitly open server.
 
-The full flow is exercised end-to-end in conformance CS-09 (401 → PRM fetch → authenticated call → audience/expiry rejection), not just unit-tested in isolation.
+The full flow is exercised end-to-end in conformance CS-09 (401 → PRM fetch → authenticated call → audience/expiry rejection), not just unit-tested in isolation. A runnable server (zero deps, RS256 + curl walkthrough) lives in [`examples/http-oauth-server`](examples/http-oauth-server) — `DeltaServer.startHttp({ port, oauth })` wires all of this in one call.
 
 The `MCP-Protocol-Version` header carries the *baseline MCP* version (2025-11-25) for ecosystem interop; Delta-MCP extensions are advertised separately in the `initialize` result's `capabilities`.
 
