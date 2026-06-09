@@ -1,6 +1,8 @@
+import { createServer, type Server } from "http";
 import {
   ProgressiveToolRegistry,
   StdioTransport,
+  createHttpHandler,
   handleToolResult,
   detectAndHandleRateLimit,
   negotiate,
@@ -13,6 +15,7 @@ import {
   type ToolDefinition,
   type ResultHandlerOptions,
   type EncodingFormat,
+  type HttpHandlerOptions,
 } from "@delta-mcp/core";
 
 export interface DeltaServerOptions {
@@ -192,5 +195,21 @@ export abstract class DeltaServer {
   startStdio(): void {
     this.transport = new StdioTransport((msg) => this.handle(msg));
     this.transport.start();
+  }
+
+  /**
+   * Serve over Streamable HTTP. Pass `oauth` to run as a full OAuth 2.1
+   * resource server (PRM discovery + token validation); omit it for the
+   * presence-only dev check. Returns the Node http.Server for lifecycle control.
+   *
+   * Codec negotiation is per-request over HTTP (Content-Type / Accept), so no
+   * stdio-style scheduled switch is needed.
+   */
+  startHttp(opts: { port?: number; host?: string } & HttpHandlerOptions = {}): Server {
+    const { port = 3000, host = "127.0.0.1", ...httpOpts } = opts;
+    const handler = createHttpHandler((msg) => this.handle(msg), httpOpts);
+    const server = createServer((req, res) => void handler(req, res));
+    server.listen(port, host);
+    return server;
   }
 }
