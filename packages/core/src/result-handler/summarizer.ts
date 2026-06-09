@@ -110,13 +110,13 @@ export function detectAndHandleRateLimit(
   const status = (e["status"] ?? e["statusCode"]) as number | undefined;
   if (status !== 429) return null;
 
-  const retryAfter =
-    parseInt(
-      ((e["headers"] as Record<string, string> | undefined)?.["retry-after"] ??
-        (e["retryAfter"] as string | undefined) ??
-        "30"),
-      10
-    ) || 30;
+  const retryRaw =
+    (e["headers"] as Record<string, string> | undefined)?.["retry-after"] ??
+    (e["retryAfter"] as string | number | undefined) ??
+    "30";
+  const parsed = parseInt(String(retryRaw), 10);
+  // Retry-After: 0 is valid ("retry now") — only fall back when truly unparseable.
+  const retryAfter = Number.isNaN(parsed) || parsed < 0 ? 30 : parsed;
 
   const message = (e["message"] as string | undefined) ?? "Rate limit exceeded";
   return handleRateLimit(retryAfter, upstream, { message });
@@ -177,18 +177,20 @@ function summarizeObject(
   };
 
   let budget = maxChars;
+  let shown = 0;
   for (const key of keys) {
     const val = obj[key];
     const preview = previewValue(val);
     const cost = JSON.stringify({ [key]: preview }).length;
 
     if (budget - cost < 0) {
-      summary["_truncatedKeys"] = keys.length - Object.keys(summary).length + 4; // +4 for meta keys
+      summary["_truncatedKeys"] = keys.length - shown; // keys omitted for budget
       break;
     }
 
     summary[key] = preview;
     budget -= cost;
+    shown++;
   }
 
   return summary;

@@ -94,4 +94,33 @@ describe("CS-05: Wire encoding", () => {
     const decoded = codec.decode(codec.encode(payload));
     expect(decoded).toEqual(payload);
   });
+
+  // ── Collision safety (regression: compact-json must never corrupt payloads) ──
+
+  const roundtrip = (payload: unknown): unknown => {
+    const codec = getCodec("compact-json");
+    return codec.decode(codec.encode(payload));
+  };
+
+  it("CS-05-11: user keys equal to short codes survive round-trip", () => {
+    // {n,t,d,i,c} are short codes for name/tools/description/id/code — as *data*
+    // keys they must come back unchanged, not be expanded.
+    const payload = { jsonrpc: "2.0", id: 7, result: { rows: [{ n: 5, t: 3, d: "x", i: 1, c: 9 }] } };
+    expect(roundtrip(payload)).toEqual(payload);
+  });
+
+  it("CS-05-12: a long key and its short code coexisting are both preserved", () => {
+    const payload = { params: { name: "alice", n: 99, description: "d", d: "literal" } };
+    expect(roundtrip(payload)).toEqual(payload);
+  });
+
+  it("CS-05-13: prototype-named keys are not mangled by the key map", () => {
+    const payload = { result: { toString: 1, constructor: 2, hasOwnProperty: 3 } };
+    expect(roundtrip(payload)).toEqual(payload);
+  });
+
+  it("CS-05-14: keys already starting with the escape char round-trip", () => {
+    const payload = { result: { "~n": 1, "~~deep": 2, normal: 3 } };
+    expect(roundtrip(payload)).toEqual(payload);
+  });
 });
