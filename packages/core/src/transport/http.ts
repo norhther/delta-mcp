@@ -2,6 +2,16 @@ import type { IncomingMessage, ServerResponse } from "http";
 import type { JsonRpcRequest, JsonRpcResponse } from "../protocol/types.js";
 import { MCP_BASELINE_VERSION } from "../protocol/types.js";
 import { type Codec, getCodec, getCodecForContentType } from "../encoding/codec.js";
+import {
+  buildPRMDocument,
+  buildWWWAuthenticate,
+  validateToken,
+  type JwtHeader,
+  type JwtPayload,
+} from "../auth/oauth21.js";
+
+/** RFC 9728 well-known path for Protected Resource Metadata. */
+const PRM_PATH = "/.well-known/oauth-protected-resource";
 
 export type HttpMessageHandler = (
   msg: JsonRpcRequest,
@@ -18,6 +28,28 @@ export interface HttpHandlerOptions {
    * `validateToken` in ../auth/oauth21) for production.
    */
   validateToken?: (token: string, req: IncomingMessage) => boolean | Promise<boolean>;
+  /**
+   * Full OAuth 2.1 resource-server mode. When set, the transport serves the
+   * RFC 9728 PRM document at `/.well-known/oauth-protected-resource`, validates
+   * bearer tokens for audience (RFC 8707) + expiry + signature, and emits
+   * spec-compliant `WWW-Authenticate` challenges with error reasons.
+   *
+   * Takes precedence over `validateToken` (the presence-only dev hook).
+   */
+  oauth?: {
+    /** This server's canonical URL — must match the token `aud` claim (RFC 8707). */
+    resourceUrl: string;
+    /** Authorization servers advertised in the PRM document. */
+    authorizationServers: string[];
+    /** Verify the JWT signature. Without it, audience + expiry are still enforced. */
+    verifySignature?: (token: string, header: JwtHeader, payload: JwtPayload) => Promise<boolean>;
+    /** RFC 7662 introspection endpoint, used when `verifySignature` is absent. */
+    introspectionEndpoint?: string;
+    clientCredentials?: { id: string; secret: string };
+    /** Optional PRM hints. */
+    signingAlgs?: string[];
+    documentationUrl?: string;
+  };
 }
 
 /**
@@ -34,6 +66,19 @@ export function createHttpHandler(handler: HttpMessageHandler, opts: HttpHandler
   return async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
     res.setHeader("MCP-Protocol-Version", MCP_BASELINE_VERSION);
     const clientVersion = req.headers["mcp-protocol-version"] as string | undefined;
+
+    // RFC 9728 Protected Resource Metadata — unauthenticated discovery endpoint.
+    // Served only in full OAuth mode; lets a client follow the 401 challenge to
+    // find its authorization server.
+    if (opts.oauth && req.method === "GET" && reqPath(req) === PRM_PATH) {
+      const prm = buildPRMDocument(opts.oauth.resourceUrl, opts.oauth.authorizationServers, {
+        signingAlgs: opts.oauth.signingAlgs,
+        documentationUrl: opts.oauth.documentationUrl,
+      });
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(prm));
+      return;
+    }
 
     // SSE stream for server-initiated messages (only meaningful post-initialize,
     // so the version header is required here).
@@ -54,15 +99,40 @@ export function createHttpHandler(handler: HttpMessageHandler, opts: HttpHandler
       return;
     }
 
-    // OAuth 2.1 resource-server role: validate bearer token
-    if (authRequired) {
+    // OAuth 2.1 resource-server role: validate bearer token.
+    if (opts.oauth) {
+      // Full mode: RFC 8707 audience + expiry + signature, spec WWW-Authenticate.
+      const prmUrl = `${opts.oauth.resourceUrl}${PRM_PATH}`;
+      const auth = req.headers.authorization;
+      const token = auth?.startsWith("Bearer ") ? auth.slice(7).trim() : "";
+      if (token.length === 0) {
+        res.writeHead(401, { "WWW-Authenticate": buildWWWAuthenticate(prmUrl) });
+        res.end();
+        return;
+      }
+      const validation = await validateToken(token, opts.oauth.resourceUrl, {
+        verifySignature: opts.oauth.verifySignature,
+        introspectionEndpoint: opts.oauth.introspectionEndpoint,
+        clientCredentials: opts.oauth.clientCredentials,
+      });
+      if (!validation.valid) {
+        res.writeHead(401, {
+          "WWW-Authenticate": buildWWWAuthenticate(prmUrl, {
+            error: "invalid_token",
+            errorDescription: validation.error ?? "Token validation failed",
+          }),
+        });
+        res.end();
+        return;
+      }
+    } else if (authRequired) {
+      // Presence-only dev mode (or custom `validateToken` hook).
       const auth = req.headers.authorization;
       const token = auth?.startsWith("Bearer ") ? auth.slice(7).trim() : "";
       const ok = token.length > 0 && (opts.validateToken ? await opts.validateToken(token, req) : true);
       if (!ok) {
         res.writeHead(401, {
-          "WWW-Authenticate":
-            'Bearer realm="delta-mcp", resource_metadata="/.well-known/oauth-protected-resource"',
+          "WWW-Authenticate": `Bearer realm="delta-mcp", resource_metadata="${PRM_PATH}"`,
         });
         res.end();
         return;
@@ -95,6 +165,13 @@ export function createHttpHandler(handler: HttpMessageHandler, opts: HttpHandler
     }
     res.end(resCodec.encode(response));
   };
+}
+
+/** Extract the path component of a request URL, ignoring any query string. */
+function reqPath(req: IncomingMessage): string {
+  const raw = req.url ?? "/";
+  const q = raw.indexOf("?");
+  return q === -1 ? raw : raw.slice(0, q);
 }
 
 function sendMissingVersion(res: ServerResponse): void {

@@ -94,13 +94,23 @@ Client → POST /mcp  Authorization: Bearer <token>
 Server → validates JWT + RFC 8707 audience binding → processes request
 ```
 
-The HTTP transport's bearer check is **presence-only by default** — any non-empty token passes, which is dev-grade only. Wire a real validator for production via the `validateToken` hook:
+The HTTP transport runs in one of two modes:
+
+**Full OAuth** — pass the `oauth` option and the transport serves the RFC 9728 PRM document at `/.well-known/oauth-protected-resource`, validates tokens for audience (RFC 8707) + expiry + signature, and emits spec `WWW-Authenticate` challenges with error reasons. This is the production path:
 
 ```typescript
 createHttpHandler(handler, {
-  validateToken: (token, req) => verifyJwt(token), // return boolean | Promise<boolean>
+  oauth: {
+    resourceUrl: "https://mcp.example.com",      // must equal the token `aud`
+    authorizationServers: ["https://auth.example.com"],
+    verifySignature: async (token, header, payload) => verifyWithJwks(token),
+  },
 });
 ```
+
+**Presence-only (dev)** — without `oauth`, the bearer check is presence-only: any non-empty token passes. Dev-grade. A `validateToken` hook narrows it without the full PRM machinery; set `authRequired: false` for an explicitly open server.
+
+The full flow is exercised end-to-end in conformance CS-09 (401 → PRM fetch → authenticated call → audience/expiry rejection), not just unit-tested in isolation.
 
 The `MCP-Protocol-Version` header carries the *baseline MCP* version (2025-11-25) for ecosystem interop; Delta-MCP extensions are advertised separately in the `initialize` result's `capabilities`.
 
@@ -190,7 +200,7 @@ npx @delta-mcp/cli bench   node ./server.js                        # benchmark
 
 ## Conformance
 
-65 tests across 8 scenarios. Run with:
+70 tests across 9 scenarios. Run with:
 
 ```bash
 npm run conformance
@@ -203,9 +213,10 @@ npm run conformance
 | CS-03 | tools/call: results, errors, structured output |
 | CS-04 | Result handler: truncation, pagination, summarization, rate limits |
 | CS-05 | Wire encoding: CBOR negotiation, compact-json roundtrip |
-| CS-06 | OAuth 2.1: PRM document, JWT validation, RFC 8707 audience |
+| CS-06 | OAuth 2.1 primitives: PRM document, JWT validation, RFC 8707 audience |
 | CS-07 | Benchmark: token reduction, latency, overhead targets |
 | CS-08 | HTTP transport: version header exemption, codec round-trip |
+| CS-09 | OAuth 2.1 end-to-end: 401 → PRM discovery → authenticated call, bad-token rejection |
 
 Full results: [`docs/benchmarks/results.md`](docs/benchmarks/results.md)
 
