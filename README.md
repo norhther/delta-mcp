@@ -94,6 +94,16 @@ Client → POST /mcp  Authorization: Bearer <token>
 Server → validates JWT + RFC 8707 audience binding → processes request
 ```
 
+The HTTP transport's bearer check is **presence-only by default** — any non-empty token passes, which is dev-grade only. Wire a real validator for production via the `validateToken` hook:
+
+```typescript
+createHttpHandler(handler, {
+  validateToken: (token, req) => verifyJwt(token), // return boolean | Promise<boolean>
+});
+```
+
+The `MCP-Protocol-Version` header carries the *baseline MCP* version (2025-11-25) for ecosystem interop; Delta-MCP extensions are advertised separately in the `initialize` result's `capabilities`.
+
 ---
 
 ## Quick Start
@@ -180,7 +190,7 @@ npx @delta-mcp/cli bench   node ./server.js                        # benchmark
 
 ## Conformance
 
-61 tests across 8 scenarios. Run with:
+65 tests across 8 scenarios. Run with:
 
 ```bash
 npm run conformance
