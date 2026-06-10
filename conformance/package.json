@@ -1,6 +1,6 @@
 {
   "name": "@delta-mcp/conformance",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "MCP2 conformance suite and E2E benchmarks",
   "type": "module",
@@ -9,9 +9,9 @@
     "bench": "node harness/bench-runner.js"
   },
   "dependencies": {
-    "@delta-mcp/client": "^0.1.0",
-    "@delta-mcp/core": "^0.1.0",
-    "@delta-mcp/server": "^0.1.0",
+    "@delta-mcp/client": "^0.2.0",
+    "@delta-mcp/core": "^0.2.0",
+    "@delta-mcp/server": "^0.2.0",
     "@modelcontextprotocol/sdk": "^1.29.0"
   },
   "devDependencies": {

@@ -1,6 +1,6 @@
 {
   "name": "@delta-mcp/server",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "license": "MIT",
   "description": "MCP2 server runtime with progressive disclosure",
   "type": "module",
@@ -28,6 +28,6 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
-    "@delta-mcp/core": "^0.1.0"
+    "@delta-mcp/core": "^0.2.0"
   }
 }
