@@ -1,6 +1,7 @@
 {
   "name": "@delta-mcp/cli",
   "version": "0.1.0",
+  "license": "MIT",
   "description": "Delta-MCP CLI — inspect, test, and benchmark Delta-MCP/MCP servers",
   "type": "module",
   "bin": {
