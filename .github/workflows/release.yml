@@ -1,0 +1,43 @@
+name: Release
+
+# Publishes all public workspace packages to npm when a version tag is pushed.
+# Requires the NPM_TOKEN repository secret (npm automation token).
+#
+#   npm version 0.2.0 --workspaces --no-git-tag-version  # bump versions
+#   git commit -am "chore: release v0.2.0" && git tag v0.2.0
+#   git push origin main --tags
+
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # npm provenance
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          registry-url: https://registry.npmjs.org
+
+      - name: Install
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Test
+        run: npm test
+
+      # Dependency order matters: core first, then client/server, then cli.
+      # npm publishes workspaces in topological order automatically.
+      - name: Publish
+        run: npm publish --workspaces --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

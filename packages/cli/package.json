@@ -7,6 +7,17 @@
   "bin": {
     "delta-mcp": "dist/cli.js"
   },
+  "files": [
+    "dist",
+    "!dist/**/*.test.*"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/norhther/delta-mcp.git"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsc --build",
     "test": "vitest run --passWithNoTests"
