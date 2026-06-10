@@ -2,6 +2,8 @@
 
 **Token-efficient MCP reimplementation.** Same JSON-RPC 2.0 wire format. Leaner discovery model. 89% fewer tokens on tool definitions, measured.
 
+**[Documentation →](https://norhther.github.io/delta-mcp/)**
+
 ---
 
 ## Why
