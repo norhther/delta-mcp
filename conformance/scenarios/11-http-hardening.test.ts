@@ -92,6 +92,133 @@ describe("CS-11: HTTP hardening", () => {
     });
   });
 
+  describe("handler crash containment", () => {
+    let fx: { server: Server; url: string };
+    beforeAll(async () => {
+      const handler = createHttpHandler(
+        async () => { throw new Error("tool blew up"); },
+        { authRequired: false }
+      );
+      const server = createServer((req, res) => void handler(req, res));
+      await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+      const addr = server.address() as { port: number };
+      fx = { server, url: `http://127.0.0.1:${addr.port}` };
+    });
+    afterAll(async () => { await new Promise((r) => fx.server.close(r)); });
+
+    it("CS-11-06: a throwing handler yields 500, not an unhandled rejection", async () => {
+      // Before the fix this was an unhandled promise rejection — a process
+      // crash in production, a hung socket here.
+      const res = await post(fx.url, RPC);
+      expect(res.status).toBe(500);
+    });
+  });
+
+  describe("Origin validation (DNS rebinding protection)", () => {
+    let fx: { server: Server; url: string };
+    beforeAll(async () => {
+      fx = await startServer({ allowedOrigins: ["https://app.example.com"] });
+    });
+    afterAll(async () => { await new Promise((r) => fx.server.close(r)); });
+
+    it("CS-11-07: request with an unlisted Origin is rejected with 403", async () => {
+      const res = await fetch(fx.url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "MCP-Protocol-Version": MCP_BASELINE_VERSION,
+          Origin: "https://evil.example.com",
+        },
+        body: RPC,
+      });
+      expect(res.status).toBe(403);
+    });
+
+    it("CS-11-08: request with a listed Origin passes", async () => {
+      const res = await fetch(fx.url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "MCP-Protocol-Version": MCP_BASELINE_VERSION,
+          Origin: "https://app.example.com",
+        },
+        body: RPC,
+      });
+      expect(res.status).toBe(200);
+      // Without this the browser blocks the response even though the server
+      // accepted the request — allowedOrigins must imply working CORS.
+      expect(res.headers.get("access-control-allow-origin")).toBe("https://app.example.com");
+    });
+
+    it("CS-11-11: OPTIONS preflight from a listed Origin succeeds with CORS headers", async () => {
+      const res = await fetch(fx.url, {
+        method: "OPTIONS",
+        headers: {
+          Origin: "https://app.example.com",
+          "Access-Control-Request-Method": "POST",
+          "Access-Control-Request-Headers": "content-type,mcp-protocol-version",
+        },
+      });
+      expect(res.status).toBe(204);
+      expect(res.headers.get("access-control-allow-origin")).toBe("https://app.example.com");
+      expect(res.headers.get("access-control-allow-methods")).toContain("POST");
+      const allowHeaders = (res.headers.get("access-control-allow-headers") ?? "").toLowerCase();
+      for (const h of ["content-type", "mcp-protocol-version", "mcp-session-id", "authorization"]) {
+        expect(allowHeaders).toContain(h);
+      }
+    });
+
+    it("CS-11-12: OPTIONS preflight from an unlisted Origin is rejected", async () => {
+      const res = await fetch(fx.url, {
+        method: "OPTIONS",
+        headers: { Origin: "https://evil.example.com", "Access-Control-Request-Method": "POST" },
+      });
+      expect(res.status).toBe(403);
+    });
+
+    it("CS-11-09: non-browser request (no Origin header) passes", async () => {
+      const res = await post(fx.url, RPC);
+      expect(res.status).toBe(200);
+    });
+
+    it("CS-11-10: with no allowedOrigins configured, any Origin-bearing request is rejected", async () => {
+      // Spec: servers MUST validate Origin. A browser page should never reach
+      // an MCP server whose operator didn't explicitly allow browser origins.
+      const other = await startServer({});
+      try {
+        const res = await fetch(other.url, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "MCP-Protocol-Version": MCP_BASELINE_VERSION,
+            Origin: "http://localhost:5173",
+          },
+          body: RPC,
+        });
+        expect(res.status).toBe(403);
+      } finally {
+        await new Promise((r) => other.server.close(r));
+      }
+    });
+  });
+
+  describe("invalid JSON-RPC shapes", () => {
+    let fx: { server: Server; url: string };
+    beforeAll(async () => { fx = await startServer({}); });
+    afterAll(async () => { await new Promise((r) => fx.server.close(r)); });
+
+    it("CS-11-13: valid JSON that is not a JSON-RPC object gets -32600, not 202", async () => {
+      // "42" parses fine but is no request. Treating it as a notification
+      // (202 Accepted) silently swallows malformed traffic.
+      for (const body of ["42", '"hello"', "[1,2,3]", "null"]) {
+        const res = await post(fx.url, body);
+        expect(res.status).toBe(400);
+        const parsed = await res.json() as { error?: { code: number } };
+        expect(parsed.error?.code).toBe(-32600);
+      }
+    });
+  });
+
   describe("defaults", () => {
     let fx: { server: Server; url: string };
     beforeAll(async () => { fx = await startServer({}); });

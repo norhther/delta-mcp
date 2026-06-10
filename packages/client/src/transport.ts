@@ -28,6 +28,8 @@ export class StdioClientTransport {
   private notificationHandlers: Array<(method: string, params: unknown) => void> = [];
   private readonly timeoutMs: number;
   private codec: Codec = jsonCodec;
+  /** Set when the child process failed to spawn or died — fails fast thereafter. */
+  private procError: Error | null = null;
 
   constructor(command: string, args: string[] = [], env?: Record<string, string>, timeoutMs = DEFAULT_REQUEST_TIMEOUT_MS) {
     this.timeoutMs = timeoutMs;
@@ -35,6 +37,17 @@ export class StdioClientTransport {
       stdio: ["pipe", "pipe", "inherit"],
       env: { ...process.env, ...env },
     });
+
+    // spawn() failures (ENOENT etc.) surface as an 'error' event on the child;
+    // without a listener that's an uncaught exception that kills the client.
+    this.proc.on("error", (err) => {
+      this.procError = new Error(`Server process failed to spawn: ${err.message}`);
+      for (const [, p] of this.pending) p.reject(this.procError);
+      this.pending.clear();
+    });
+    // stdin write races process death (EPIPE). The rejection comes from the
+    // 'error'/'exit' handlers above — swallow the stream-level echo.
+    this.proc.stdin?.on("error", () => {});
 
     this.rl = createInterface({ input: this.proc.stdout!, terminal: false });
     this.rl.on("line", (line) => {
@@ -85,6 +98,7 @@ export class StdioClientTransport {
   }
 
   send(method: string, params?: unknown): Promise<JsonRpcResponse> {
+    if (this.procError) return Promise.reject(this.procError);
     const id = this.nextId++;
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
@@ -106,7 +120,9 @@ export class StdioClientTransport {
   }
 
   async close(): Promise<void> {
-    this.proc.stdin!.end();
+    // Process never spawned or already gone — nothing to wait for.
+    if (this.procError || this.proc.exitCode !== null) return;
+    this.proc.stdin?.end();
     await new Promise<void>((r) => this.proc.once("exit", () => r()));
   }
 }
@@ -115,6 +131,8 @@ export class StdioClientTransport {
 export class HttpClientTransport {
   private nextId = 1;
   private codec: Codec = jsonCodec;
+  /** Assigned by the server on initialize; echoed on every later request. */
+  private sessionId?: string;
 
   constructor(
     private baseUrl: string,
@@ -139,6 +157,7 @@ export class HttpClientTransport {
       "MCP-Protocol-Version": MCP_BASELINE_VERSION,
     };
     if (this.token) headers["Authorization"] = `Bearer ${this.token}`;
+    if (this.sessionId) headers["Mcp-Session-Id"] = this.sessionId;
     return headers;
   }
 
@@ -167,6 +186,26 @@ export class HttpClientTransport {
       const wwwAuth = res.headers.get("WWW-Authenticate") ?? "";
       throw new AuthRequired(wwwAuth);
     }
+
+    // Transport-level rejections (429 rate limit, 504 timeout, 403 origin…)
+    // often carry no body. Decode a JSON-RPC error body when one exists;
+    // otherwise raise the status instead of a JSON parse error on "".
+    if (!res.ok) {
+      const body = await res.text();
+      if (body) {
+        try {
+          return getCodecForContentType(res.headers.get("content-type")).decode(body) as JsonRpcResponse;
+        } catch {
+          // Non-decodable body — fall through to the status error.
+        }
+      }
+      throw new Error(`HTTP ${res.status} from MCP server${body ? `: ${body.slice(0, 200)}` : ""}`);
+    }
+
+    // Adopt the session the server assigned on initialize (MCP Streamable
+    // HTTP); without it, per-session negotiation state cannot be addressed.
+    const sid = res.headers.get("Mcp-Session-Id");
+    if (sid) this.sessionId = sid;
 
     return this.decodeResponse(res);
   }

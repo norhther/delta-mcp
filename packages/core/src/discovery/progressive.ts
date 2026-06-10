@@ -17,6 +17,11 @@ export class ProgressiveToolRegistry {
   private schemaHashes = new Map<string, string>();
 
   register(tool: ToolDefinition): void {
+    if (this.tools.has(tool.name)) {
+      // Silent overwrite hides copy-paste config bugs until a call routes to
+      // the wrong handler. Fail at startup.
+      throw new Error(`Tool "${tool.name}" is already registered`);
+    }
     if (tool.description.length > MAX_SUMMARY_DESCRIPTION) {
       throw new Error(
         `Tool "${tool.name}" description exceeds ${MAX_SUMMARY_DESCRIPTION} chars in summary mode. ` +

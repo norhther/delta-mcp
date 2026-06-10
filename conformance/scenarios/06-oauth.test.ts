@@ -119,6 +119,30 @@ describe("CS-06: OAuth 2.1 resource-server", () => {
     expect(result.valid).toBe(true);
   });
 
+  it("CS-06-11: rejects tokens without an exp claim by default", async () => {
+    const header = Buffer.from(JSON.stringify({ alg: "RS256" })).toString("base64url");
+    const payload = Buffer.from(JSON.stringify({
+      sub: "u1",
+      aud: RESOURCE_URL, // no exp — must not be accepted as a never-expiring token
+    })).toString("base64url");
+    const sig = Buffer.from("fakesig").toString("base64url");
+
+    const result = await validateToken(`${header}.${payload}.${sig}`, RESOURCE_URL);
+    expect(result.valid).toBe(false);
+    expect(result.error).toBe("missing_expiry");
+  });
+
+  it("CS-06-12: requireExpiry: false opts back into exp-less tokens", async () => {
+    const header = Buffer.from(JSON.stringify({ alg: "RS256" })).toString("base64url");
+    const payload = Buffer.from(JSON.stringify({ sub: "u1", aud: RESOURCE_URL })).toString("base64url");
+    const sig = Buffer.from("fakesig").toString("base64url");
+
+    const result = await validateToken(`${header}.${payload}.${sig}`, RESOURCE_URL, {
+      requireExpiry: false,
+    });
+    expect(result.valid).toBe(true);
+  });
+
   it("CS-06-10: custom verifySignature hook is called", async () => {
     const header = Buffer.from(JSON.stringify({ alg: "RS256" })).toString("base64url");
     const payload = Buffer.from(JSON.stringify({

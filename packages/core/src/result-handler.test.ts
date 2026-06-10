@@ -133,4 +133,46 @@ describe("Result handler — Phase 5 conformance", () => {
     const rl = detectAndHandleRateLimit({ status: 429 }, "myapi");
     expect(rl!.retryAfterSeconds).toBe(30);
   });
+
+  // ── Pagination parameter hardening ────────────────────────────────────────
+  // page/pageSize flow straight from model-supplied tool-call args, so they
+  // can be anything: NaN, 0, negatives, floats. None of those may produce
+  // empty pages, infinite totalPages, or a hasMore that never goes false.
+
+  describe("pagination parameter validation", () => {
+    const arr = Array.from({ length: 100 }, (_, i) => i);
+
+    it("NaN page falls back to page 1 with real items", () => {
+      const r = handleToolResult(arr, { page: NaN }) as { page: number; items: unknown[] };
+      expect(r.page).toBe(1);
+      expect(r.items.length).toBeGreaterThan(0);
+    });
+
+    it("pageSize 0 falls back to the default page size (no infinite totalPages)", () => {
+      const r = handleToolResult(arr, { pageSize: 0 }) as {
+        pageSize: number; totalPages: number; hasMore: boolean; items: unknown[];
+      };
+      expect(r.pageSize).toBe(50);
+      expect(Number.isFinite(r.totalPages)).toBe(true);
+      expect(r.items.length).toBe(50);
+    });
+
+    it("negative pageSize falls back to the default page size", () => {
+      const r = handleToolResult(arr, { pageSize: -5 }) as { pageSize: number; items: unknown[] };
+      expect(r.pageSize).toBe(50);
+      expect(r.items.length).toBe(50);
+    });
+
+    it("fractional page is floored to a whole page", () => {
+      const r = handleToolResult(arr, { page: 2.7, pageSize: 10 }) as { page: number; items: unknown[] };
+      expect(r.page).toBe(2);
+      expect(r.items[0]).toBe(10);
+    });
+
+    it("last page reports hasMore: false even with odd params", () => {
+      const r = handleToolResult(arr, { page: 999, pageSize: 30 }) as { page: number; hasMore: boolean };
+      expect(r.page).toBe(4); // clamped to last
+      expect(r.hasMore).toBe(false);
+    });
+  });
 });

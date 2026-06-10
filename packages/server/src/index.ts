@@ -34,9 +34,28 @@ export interface DeltaServerOptions {
  * disclosure extension. Drop-in replacement for standard MCP servers;
  * falls back gracefully for clients that don't negotiate MCP2 capabilities.
  */
+interface SessionState {
+  progressiveDisclosure: boolean;
+}
+
+/** stdio carries exactly one client per process — a fixed session id suffices. */
+const STDIO_SESSION_ID = "stdio";
+
+/**
+ * Cap on tracked HTTP sessions. The Map evicts oldest-first (insertion order)
+ * so an initialize flood cannot grow memory unboundedly; an evicted session
+ * degrades to standard-MCP behavior, it does not break.
+ */
+const MAX_SESSIONS = 1024;
+
 export abstract class DeltaServer {
   private registry = new ProgressiveToolRegistry();
-  private clientProgressiveDisclosure = false;
+  /**
+   * Per-session negotiation state, keyed by Mcp-Session-Id (HTTP) or the fixed
+   * stdio id. One server instance serves many HTTP clients concurrently —
+   * a standard client initializing must not flip a delta client's mode.
+   */
+  private sessions = new Map<string, SessionState>();
   private transport?: StdioTransport;
 
   constructor(private opts: DeltaServerOptions) {}
@@ -62,24 +81,28 @@ export abstract class DeltaServer {
     };
   }
 
-  private async handle(msg: JsonRpcRequest): Promise<JsonRpcResponse | null> {
+  private async handle(msg: JsonRpcRequest, sessionId?: string): Promise<JsonRpcResponse | null> {
     const id = (msg as any).id ?? null;
 
     // JSON-RPC 2.0: a request without `id` is a notification — it MUST NOT
     // receive a response, not even an error. Process it, then drop the reply.
     const isNotification = (msg as any).id === undefined;
-    const response = await this.dispatch(msg, id);
+    const response = await this.dispatch(msg, id, sessionId);
     return isNotification ? null : response;
   }
 
-  private async dispatch(msg: JsonRpcRequest, id: JsonRpcId): Promise<JsonRpcResponse | null> {
+  private async dispatch(
+    msg: JsonRpcRequest,
+    id: JsonRpcId,
+    sessionId?: string
+  ): Promise<JsonRpcResponse | null> {
     switch (msg.method) {
       case "initialize":
-        return this.handleInitialize(msg, id);
+        return this.handleInitialize(msg, id, sessionId);
       case "notifications/initialized":
         return null; // one-way notification
       case "tools/list":
-        return this.handleToolsList(id);
+        return this.handleToolsList(id, sessionId);
       case "tools/describe":
         return this.handleToolsDescribe(msg, id);
       case "tools/call":
@@ -93,7 +116,18 @@ export abstract class DeltaServer {
     }
   }
 
-  private handleInitialize(msg: JsonRpcRequest, id: unknown): JsonRpcResponse {
+  /** Record (or replace) a session's negotiated state, evicting oldest at the cap. */
+  private setSession(sessionId: string | undefined, state: SessionState): void {
+    if (!sessionId) return;
+    this.sessions.delete(sessionId); // re-insert to refresh eviction order
+    this.sessions.set(sessionId, state);
+    if (this.sessions.size > MAX_SESSIONS) {
+      const oldest = this.sessions.keys().next().value;
+      if (oldest !== undefined) this.sessions.delete(oldest);
+    }
+  }
+
+  private handleInitialize(msg: JsonRpcRequest, id: unknown, sessionId?: string): JsonRpcResponse {
     const params = msg.params as any;
     const clientCaps = params?.capabilities ?? {};
     const clientVersion: unknown = params?.protocolVersion;
@@ -105,7 +139,7 @@ export abstract class DeltaServer {
       typeof clientVersion === "string" && clientVersion.startsWith("delta-mcp/");
 
     if (!isClientDelta || !isDeltaVersionCompatible(clientVersion)) {
-      this.clientProgressiveDisclosure = false;
+      this.setSession(sessionId, { progressiveDisclosure: false });
       return {
         jsonrpc: "2.0",
         id: id as any,
@@ -118,8 +152,9 @@ export abstract class DeltaServer {
     }
 
     // Detect if client supports progressive disclosure
-    this.clientProgressiveDisclosure =
-      !!clientCaps?.tools?.progressiveDisclosure;
+    this.setSession(sessionId, {
+      progressiveDisclosure: !!clientCaps?.tools?.progressiveDisclosure,
+    });
 
     // Negotiate wire encoding from both sides' capabilities.
     const serverEnc = this.capabilities().encoding ?? {};
@@ -134,8 +169,12 @@ export abstract class DeltaServer {
 
     // Switch the stdio codec *after* this (plain-JSON) response is sent, so the
     // client can still decode the handshake. The negotiated format is echoed in
-    // the result so the client switches to the same codec.
-    if (this.transport) this.transport.scheduleEncoding(format);
+    // the result so the client switches to the same codec. Guarded to the stdio
+    // session: a server running stdio + HTTP simultaneously must not let an
+    // HTTP client's handshake re-encode the stdio stream under its client.
+    if (this.transport && sessionId === STDIO_SESSION_ID) {
+      this.transport.scheduleEncoding(format);
+    }
 
     return {
       jsonrpc: "2.0",
@@ -150,8 +189,13 @@ export abstract class DeltaServer {
     };
   }
 
-  private handleToolsList(id: unknown): JsonRpcResponse {
-    const tools = this.clientProgressiveDisclosure
+  private handleToolsList(id: unknown, sessionId?: string): JsonRpcResponse {
+    // Unknown or evicted session → standard mode. Full schemas are the safe
+    // default: every MCP client can consume them.
+    const progressive = sessionId
+      ? this.sessions.get(sessionId)?.progressiveDisclosure ?? false
+      : false;
+    const tools = progressive
       ? this.registry.listSummaries() // short descriptions only — the token savings
       : this.registry.listFull();     // standard clients get full schemas (MCP baseline compat)
 
@@ -191,14 +235,17 @@ export abstract class DeltaServer {
     // Tool execution delegated to registered handler
     // Result passes through summarizer before hitting LLM context
     try {
-      const rawResult = await this.callTool(name, args);
+      // Models routinely omit `arguments` for zero-param tools — hand the tool
+      // an empty object so `args.foo` is undefined, not a TypeError.
+      const callArgs = (args ?? {}) as Record<string, unknown>;
+      const rawResult = await this.callTool(name, callArgs);
 
-      // Merge per-call pagination params from tool args into result handler opts
-      const callArgs = args as Record<string, unknown> | undefined;
+      // Merge per-call pagination params from tool args into result handler
+      // opts. Non-numeric junk becomes NaN here; handleToolResult sanitizes.
       const resultOpts: ResultHandlerOptions = {
         ...this.opts.resultHandler,
-        ...(callArgs?.["page"] !== undefined && { page: Number(callArgs["page"]) }),
-        ...(callArgs?.["pageSize"] !== undefined && { pageSize: Number(callArgs["pageSize"]) }),
+        ...(callArgs["page"] !== undefined && { page: Number(callArgs["page"]) }),
+        ...(callArgs["pageSize"] !== undefined && { pageSize: Number(callArgs["pageSize"]) }),
       };
 
       const result = handleToolResult(rawResult, resultOpts);
@@ -225,7 +272,7 @@ export abstract class DeltaServer {
   protected abstract callTool(name: string, args: unknown): Promise<unknown>;
 
   startStdio(): void {
-    this.transport = new StdioTransport((msg) => this.handle(msg));
+    this.transport = new StdioTransport((msg) => this.handle(msg, STDIO_SESSION_ID));
     this.transport.start();
   }
 
@@ -239,7 +286,7 @@ export abstract class DeltaServer {
    */
   startHttp(opts: { port?: number; host?: string } & HttpHandlerOptions = {}): Server {
     const { port = 3000, host = "127.0.0.1", ...httpOpts } = opts;
-    const handler = createHttpHandler((msg) => this.handle(msg), httpOpts);
+    const handler = createHttpHandler((msg, _req, sessionId) => this.handle(msg, sessionId), httpOpts);
     const server = createServer((req, res) => void handler(req, res));
     server.listen(port, host);
     return server;

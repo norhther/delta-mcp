@@ -26,7 +26,12 @@ export interface TokenValidationResult {
   scopes?: string[];
   clientId?: string;
   expiresAt?: Date;
-  error?: "expired" | "invalid_audience" | "invalid_signature" | "introspection_failed";
+  error?:
+    | "expired"
+    | "missing_expiry"
+    | "invalid_audience"
+    | "invalid_signature"
+    | "introspection_failed";
 }
 
 export interface JwtHeader {
@@ -89,6 +94,13 @@ export async function validateToken(
     verifySignature?: (token: string, header: JwtHeader, payload: JwtPayload) => Promise<boolean>;
     introspectionEndpoint?: string;
     clientCredentials?: { id: string; secret: string };
+    /**
+     * Require an `exp` claim. Default true — a token without expiry never
+     * expires, which a resource server should not silently accept. Set false
+     * only when the AS genuinely issues exp-less tokens and revocation is
+     * handled elsewhere (e.g. introspection).
+     */
+    requireExpiry?: boolean;
   } = {}
 ): Promise<TokenValidationResult> {
   // JWT structure check
@@ -104,8 +116,13 @@ export async function validateToken(
     return { valid: false, error: "invalid_signature" };
   }
 
-  // Expiry check
-  if (payload.exp && payload.exp < Math.floor(Date.now() / 1000)) {
+  // Expiry check. `exp: 0` is a real (long-past) timestamp, so test for
+  // presence with typeof, not truthiness.
+  const hasExp = typeof payload.exp === "number";
+  if (!hasExp && (opts.requireExpiry ?? true)) {
+    return { valid: false, error: "missing_expiry" };
+  }
+  if (hasExp && payload.exp! < Math.floor(Date.now() / 1000)) {
     return { valid: false, error: "expired" };
   }
 
@@ -145,16 +162,26 @@ async function introspect(
       "Basic " + Buffer.from(`${credentials.id}:${credentials.secret}`).toString("base64");
   }
 
-  const res = await fetch(endpoint, {
-    method: "POST",
-    headers,
-    body: `token=${encodeURIComponent(token)}&token_type_hint=access_token`,
-  });
+  // Bounded: a hung AS must fail the token, not pin the request open until
+  // the transport's own deadline.
+  let res: Response;
+  try {
+    res = await fetch(endpoint, {
+      method: "POST",
+      headers,
+      body: `token=${encodeURIComponent(token)}&token_type_hint=access_token`,
+      signal: AbortSignal.timeout(INTROSPECTION_TIMEOUT_MS),
+    });
+  } catch {
+    return false;
+  }
 
   if (!res.ok) return false;
   const body = (await res.json()) as { active?: boolean };
   return body.active === true;
 }
+
+const INTROSPECTION_TIMEOUT_MS = 10_000;
 
 /**
  * Middleware factory: validates bearer token on every request.

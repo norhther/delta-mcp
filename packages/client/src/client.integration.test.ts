@@ -80,3 +80,33 @@ describe("MCP2 client ↔ server integration", () => {
     expect(Array.isArray(result)).toBe(true);
   });
 });
+
+describe("schema cache invalidation", () => {
+  it("clears the cache when the server sends tools/list_changed", async () => {
+    let notify: ((method: string, params: unknown) => void) | undefined;
+    let describeCalls = 0;
+
+    const fakeTransport = {
+      send: async (method: string) => {
+        if (method === "tools/describe") describeCalls++;
+        return {
+          jsonrpc: "2.0" as const,
+          id: 1,
+          result: { name: "t", description: "d", inputSchema: { type: "object" } },
+        };
+      },
+      onNotification: (h: (method: string, params: unknown) => void) => { notify = h; },
+    };
+
+    const c = new DeltaClient(fakeTransport as never);
+    await c.describeTool("t");
+    await c.describeTool("t"); // cache hit
+    expect(describeCalls).toBe(1);
+
+    // Server announces its tool list changed — cached schemas may be stale.
+    notify?.("notifications/tools/list_changed", {});
+
+    await c.describeTool("t"); // must re-fetch
+    expect(describeCalls).toBe(2);
+  });
+});

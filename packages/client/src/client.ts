@@ -11,6 +11,7 @@ import type { StdioClientTransport, HttpClientTransport } from "./transport.js";
 export type Transport = Pick<StdioClientTransport | HttpClientTransport, "send"> & {
   notify?: (method: string, params?: unknown) => void;
   setEncoding?: (format: EncodingFormat) => void;
+  onNotification?: (handler: (method: string, params: unknown) => void) => void;
 };
 
 export interface SessionInfo {
@@ -37,7 +38,12 @@ export class DeltaClient {
   private session?: SessionInfo;
   private schemaCache = new Map<string, ToolDefinition>();
 
-  constructor(private transport: Transport) {}
+  constructor(private transport: Transport) {
+    // Cached schemas go stale the moment the server's tool set changes.
+    transport.onNotification?.((method) => {
+      if (method === "notifications/tools/list_changed") this.schemaCache.clear();
+    });
+  }
 
   async initialize(clientInfo: { name: string; version: string } = { name: "delta-mcp-client", version: "0.1.0" }): Promise<SessionInfo> {
     // codeExecution deliberately not advertised — no sandbox implementation

@@ -39,4 +39,13 @@ describe("CS-03: tools/call", () => {
     const result = await fx.client.callTool("list_dir", { path: "." });
     expect(Array.isArray(result)).toBe(true);
   });
+
+  it("CS-03-06: tools/call without an arguments field gets {} not undefined", async () => {
+    // Models routinely omit `arguments` for zero-param tools. The tool handler
+    // must receive an empty object — `args.foo` on undefined is a TypeError.
+    // demo's search reads args["limit"], so it crashes if args is undefined.
+    const res = await fx.transport.send("tools/call", { name: "search" });
+    expect(res.error).toBeUndefined();
+    expect(res.result).toBeDefined();
+  });
 });

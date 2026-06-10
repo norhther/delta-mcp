@@ -83,6 +83,10 @@ CBOR binary encoding is available over HTTP via the optional `cbor-x` dependency
 
 The HTTP transport decodes requests by `Content-Type` and encodes responses by the client's `Accept` header. The `MCP-Protocol-Version` header is required on all requests except `initialize` — the client doesn't know the version until the handshake completes.
 
+Sessions follow the MCP Streamable HTTP model: the server assigns an `Mcp-Session-Id` on `initialize` and the client echoes it on every subsequent request. Negotiation state (progressive disclosure, encoding) is keyed per session, so one server instance can serve delta-aware and standard MCP clients concurrently without cross-talk. Requests without a known session id get standard MCP behavior (full schemas).
+
+Browser-originated requests (any request carrying an `Origin` header) are rejected with 403 unless the origin is listed in `allowedOrigins` — the spec-required DNS-rebinding protection. Non-browser clients are unaffected. Behind a reverse proxy, set `trustProxy: true` so the per-IP rate limiter keys on `X-Forwarded-For` instead of the proxy's address.
+
 ### OAuth 2.1 (resource-server only)
 
 Delta-MCP validates tokens, never issues them. Stateless by design:
@@ -98,7 +102,7 @@ Server → validates JWT + RFC 8707 audience binding → processes request
 
 The HTTP transport runs in one of two modes:
 
-**Full OAuth** — pass the `oauth` option and the transport serves the RFC 9728 PRM document at `/.well-known/oauth-protected-resource`, validates tokens for audience (RFC 8707) + expiry + signature, and emits spec `WWW-Authenticate` challenges with error reasons. This is the production path:
+**Full OAuth** — pass the `oauth` option and the transport serves the RFC 9728 PRM document at `/.well-known/oauth-protected-resource`, validates tokens for audience (RFC 8707) + expiry + signature, and emits spec `WWW-Authenticate` challenges with error reasons. `oauth` mode requires either `verifySignature` or `introspectionEndpoint` — the handler refuses to start with neither, because tokens would otherwise be forgeable. Tokens without an `exp` claim are rejected by default. This is the production path:
 
 ```typescript
 createHttpHandler(handler, {
@@ -215,7 +219,7 @@ npx @delta-mcp/cli bench   node ./server.js                        # benchmark
 
 ## Conformance
 
-80 tests across 11 scenarios. Run with:
+103 tests across 13 scenarios (plus 46 package unit tests). Run with:
 
 ```bash
 npm run conformance
@@ -233,7 +237,9 @@ npm run conformance
 | CS-08 | HTTP transport: version header exemption, codec round-trip |
 | CS-09 | OAuth 2.1 end-to-end: 401 → PRM discovery → authenticated call, bad-token rejection |
 | CS-10 | Protocol soundness: version-skew downgrade, notification semantics, honest capabilities, HTTP 202 |
-| CS-11 | HTTP hardening: body size limit (413), per-IP rate limit (429), handler timeout (504) |
+| CS-11 | HTTP hardening: body limit (413), rate limit (429), timeout (504), Origin validation (403), crash containment (500) |
+| CS-12 | Official MCP SDK compatibility: baseline clients get standard behavior |
+| CS-13 | HTTP session isolation: Mcp-Session-Id, concurrent delta + standard clients |
 
 Full results: [`docs/benchmarks/results.md`](docs/benchmarks/results.md)
 

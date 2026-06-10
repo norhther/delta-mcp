@@ -13,6 +13,15 @@ describe("Progressive disclosure — Phase 2 conformance", () => {
     ).toThrow(/60 chars/);
   });
 
+  it("rejects duplicate tool names at registration", () => {
+    // Silent overwrite hides copy-paste config bugs until a tool call goes to
+    // the wrong handler. Fail at startup instead.
+    const reg = new ProgressiveToolRegistry();
+    const def = { name: "dup", description: "first", inputSchema: { type: "object" } };
+    reg.register(def);
+    expect(() => reg.register({ ...def, description: "second" })).toThrow(/already registered/i);
+  });
+
   it("listSummaries returns only name+description, not full schema", () => {
     const reg = new ProgressiveToolRegistry();
     reg.register({

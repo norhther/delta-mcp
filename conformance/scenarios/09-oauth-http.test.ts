@@ -29,6 +29,21 @@ function makeJwt(payload: Record<string, unknown>): string {
   return `${header}.${body}.${sig}`;
 }
 
+describe("CS-09-00: OAuth misconfiguration fails loudly", () => {
+  it("createHttpHandler throws when oauth has neither verifySignature nor introspectionEndpoint", () => {
+    // Without one of the two, tokens are only structurally checked — anyone can
+    // forge an unsigned JWT with the right `aud`. Refuse to start that way.
+    expect(() =>
+      createHttpHandler(echo, {
+        oauth: {
+          resourceUrl: "https://mcp.example.com",
+          authorizationServers: [AS_URL],
+        },
+      })
+    ).toThrow(/verifySignature|introspectionEndpoint/);
+  });
+});
+
 describe("CS-09: OAuth 2.1 end-to-end over HTTP", () => {
   let server: Server;
   let url: string;

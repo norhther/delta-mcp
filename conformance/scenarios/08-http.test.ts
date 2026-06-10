@@ -66,6 +66,16 @@ describe("CS-08: HTTP transport", () => {
     expect((decoded.result as { ok: boolean }).ok).toBe(true);
   });
 
+  it("CS-08-05: GET with Accept: text/event-stream returns 405 (no SSE stream offered)", async () => {
+    // MCP Streamable HTTP: a server that does not offer an SSE stream at this
+    // endpoint MUST return 405 — not a silent stream that never emits events.
+    const res = await fetch(url, {
+      method: "GET",
+      headers: { Accept: "text/event-stream", "MCP-Protocol-Version": "2025-11-25" },
+    });
+    expect(res.status).toBe(405);
+  });
+
   it("CS-08-04: HttpClientTransport drives the server, then upgrades encoding", async () => {
     const transport = new HttpClientTransport(url);
     const init = await transport.send("initialize");

@@ -39,6 +39,18 @@ function estimateTokens(value: unknown): number {
 }
 
 /**
+ * page/pageSize arrive straight from model-supplied tool-call args — NaN, 0,
+ * negatives, and floats must all degrade to safe values, never to empty pages
+ * or `totalPages: Infinity` (which makes `hasMore` permanently true and baits
+ * the model into an endless pagination loop).
+ */
+function sanitizePositiveInt(value: number | undefined): number | undefined {
+  if (typeof value !== "number" || !Number.isFinite(value)) return undefined;
+  const floored = Math.floor(value);
+  return floored >= 1 ? floored : undefined;
+}
+
+/**
  * Result handler — keeps large tool outputs out of LLM context.
  *
  * Handles:
@@ -56,8 +68,9 @@ export function handleToolResult(
 ): unknown {
   const maxTokens = opts.maxTokens ?? DEFAULT_MAX_TOKENS;
   const maxChars = maxTokens * CHARS_PER_TOKEN;
-  const pageSize = opts.pageSize ?? opts.paginateAfter ?? DEFAULT_PAGE_SIZE;
-  const page = opts.page ?? 1;
+  const pageSize =
+    sanitizePositiveInt(opts.pageSize) ?? sanitizePositiveInt(opts.paginateAfter) ?? DEFAULT_PAGE_SIZE;
+  const page = sanitizePositiveInt(opts.page) ?? 1;
 
   // Strings
   if (typeof result === "string") {

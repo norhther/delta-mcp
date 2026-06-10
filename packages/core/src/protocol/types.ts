@@ -48,6 +48,21 @@ export function isDeltaVersionCompatible(version: unknown): boolean {
   return major === ownMajor;
 }
 
+/**
+ * Structural check for a single JSON-RPC request/notification. Valid JSON that
+ * is not a request object ("42", arrays, strings) must be answered with
+ * INVALID_REQUEST — not silently treated as a notification. Batch arrays are
+ * rejected too: MCP removed JSON-RPC batching as of 2025-06-18.
+ */
+export function isJsonRpcRequestShape(value: unknown): value is JsonRpcRequest {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    !Array.isArray(value) &&
+    typeof (value as { method?: unknown }).method === "string"
+  );
+}
+
 // Standard error codes (aligned with spec convergence: -32002 → -32602)
 export const ErrorCodes = {
   PARSE_ERROR: -32700,
