@@ -1,6 +1,6 @@
 {
   "name": "@delta-mcp/client",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "license": "MIT",
   "description": "MCP2 client with progressive disclosure",
   "type": "module",
