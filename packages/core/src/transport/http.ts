@@ -21,6 +21,17 @@ export type HttpMessageHandler = (
 export interface HttpHandlerOptions {
   /** Require a Bearer token on every POST. Default: true. Set false for local/dev use. */
   authRequired?: boolean;
+  /** Max request body size in bytes. Oversized requests get 413. Default: 4 MiB. */
+  maxBodyBytes?: number;
+  /** Per-request handler deadline. Slower handlers get 504. Default: 30s. */
+  requestTimeoutMs?: number;
+  /**
+   * Fixed-window per-IP rate limit. Over-limit requests get 429 + Retry-After.
+   * Checked before auth so token validation can't be used as an amplifier.
+   * In-memory — for multi-instance deployments put a shared limiter (reverse
+   * proxy, Redis) in front instead.
+   */
+  rateLimit?: { limit: number; windowMs: number };
   /**
    * Validate the bearer token (the raw value after "Bearer "). Return true to
    * accept. When omitted, auth is *presence-only* — any non-empty Bearer value
@@ -63,9 +74,23 @@ export interface HttpHandlerOptions {
  */
 export function createHttpHandler(handler: HttpMessageHandler, opts: HttpHandlerOptions = {}) {
   const authRequired = opts.authRequired ?? true;
+  const maxBodyBytes = opts.maxBodyBytes ?? DEFAULT_MAX_BODY_BYTES;
+  const requestTimeoutMs = opts.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
+  const limiter = opts.rateLimit ? createRateLimiter(opts.rateLimit) : null;
+
   return async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
     res.setHeader("MCP-Protocol-Version", MCP_BASELINE_VERSION);
     const clientVersion = req.headers["mcp-protocol-version"] as string | undefined;
+
+    // Rate limit first — cheapest check, shields auth + body parsing.
+    if (limiter) {
+      const verdict = limiter(req.socket.remoteAddress ?? "unknown");
+      if (!verdict.allowed) {
+        res.writeHead(429, { "Retry-After": String(verdict.retryAfterSeconds) });
+        res.end();
+        return;
+      }
+    }
 
     // RFC 9728 Protected Resource Metadata — unauthenticated discovery endpoint.
     // Served only in full OAuth mode; lets a client follow the 401 challenge to
@@ -140,7 +165,19 @@ export function createHttpHandler(handler: HttpMessageHandler, opts: HttpHandler
     }
 
     const reqCodec = getCodecForContentType(req.headers["content-type"]);
-    const body = await readBody(req);
+    let body: Buffer;
+    try {
+      body = await readBody(req, maxBodyBytes);
+    } catch (err) {
+      if (err instanceof BodyTooLarge) {
+        // Close the connection once the 413 is flushed — never drain the rest
+        // of an attacker-sized payload.
+        res.writeHead(413, { Connection: "close" });
+        res.end(() => req.destroy());
+        return;
+      }
+      throw err;
+    }
     let msg: JsonRpcRequest;
     try {
       msg = reqCodec.decode(body) as JsonRpcRequest;
@@ -156,7 +193,18 @@ export function createHttpHandler(handler: HttpMessageHandler, opts: HttpHandler
       return sendMissingVersion(res);
     }
 
-    const response = await handler(msg, req);
+    // Deadline on the handler: a hung tool must not pin the connection open.
+    let response: JsonRpcResponse | null;
+    try {
+      response = await withTimeout(handler(msg, req), requestTimeoutMs);
+    } catch (err) {
+      if (err instanceof HandlerTimeout) {
+        res.writeHead(504);
+        res.end();
+        return;
+      }
+      throw err;
+    }
     if (!response) {
       // Notification — MCP Streamable HTTP: 202 Accepted, no body.
       res.writeHead(202);
@@ -191,11 +239,70 @@ function pickResponseCodec(accept: string | undefined, fallback: Codec): Codec {
   return fallback;
 }
 
-function readBody(req: IncomingMessage): Promise<Buffer> {
+const DEFAULT_MAX_BODY_BYTES = 4 * 1024 * 1024; // 4 MiB
+const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
+
+class BodyTooLarge extends Error {}
+class HandlerTimeout extends Error {}
+
+/** Read the request body, aborting the stream as soon as the limit is crossed. */
+function readBody(req: IncomingMessage, maxBytes: number): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
-    req.on("data", (c: Buffer) => chunks.push(c));
+    let received = 0;
+    req.on("data", (c: Buffer) => {
+      received += c.length;
+      if (received > maxBytes) {
+        // Stop reading without killing the socket yet — the caller still needs
+        // to flush a 413 before the connection is torn down.
+        req.pause();
+        reject(new BodyTooLarge());
+        return;
+      }
+      chunks.push(c);
+    });
     req.on("end", () => resolve(Buffer.concat(chunks)));
     req.on("error", reject);
   });
+}
+
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new HandlerTimeout()), ms);
+    promise.then(
+      (v) => { clearTimeout(timer); resolve(v); },
+      (e) => { clearTimeout(timer); reject(e); }
+    );
+  });
+}
+
+type RateVerdict = { allowed: true } | { allowed: false; retryAfterSeconds: number };
+
+/**
+ * Fixed-window per-IP counter. A full sweep runs at most once per window so
+ * the map cannot grow unbounded under a rotating-IP flood.
+ */
+function createRateLimiter(cfg: { limit: number; windowMs: number }): (ip: string) => RateVerdict {
+  const windows = new Map<string, { count: number; resetAt: number }>();
+  let lastSweep = Date.now();
+
+  return (ip: string): RateVerdict => {
+    const now = Date.now();
+
+    if (now - lastSweep > cfg.windowMs) {
+      for (const [key, w] of windows) if (now >= w.resetAt) windows.delete(key);
+      lastSweep = now;
+    }
+
+    const win = windows.get(ip);
+    if (!win || now >= win.resetAt) {
+      windows.set(ip, { count: 1, resetAt: now + cfg.windowMs });
+      return { allowed: true };
+    }
+    if (win.count >= cfg.limit) {
+      return { allowed: false, retryAfterSeconds: Math.max(1, Math.ceil((win.resetAt - now) / 1000)) };
+    }
+    win.count += 1;
+    return { allowed: true };
+  };
 }
