@@ -35,9 +35,19 @@ jobs:
       - name: Test
         run: npm test
 
-      # Dependency order matters: core first, then client/server, then cli.
-      # npm publishes workspaces in topological order automatically.
+      # Publish each public workspace, skipping versions already on the
+      # registry — makes failed runs safely re-runnable. Private workspaces
+      # (conformance) are excluded by npm itself.
       - name: Publish
-        run: npm publish --workspaces --provenance --access public
+        run: |
+          for dir in packages/core packages/client packages/server packages/cli; do
+            name=$(node -p "require('./$dir/package.json').name")
+            version=$(node -p "require('./$dir/package.json').version")
+            if npm view "$name@$version" version >/dev/null 2>&1; then
+              echo "skip: $name@$version already published"
+            else
+              npm publish --workspace "$dir" --provenance --access public
+            fi
+          done
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
