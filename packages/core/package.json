@@ -8,13 +8,24 @@
   "types": "dist/index.d.ts",
   "exports": {
     ".": {
-      "import": "./dist/index.js",
-      "types": "./dist/index.d.ts"
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
     },
     "./benchmark": {
-      "import": "./dist/benchmark/token-counter.js",
-      "types": "./dist/benchmark/token-counter.d.ts"
+      "types": "./dist/benchmark/token-counter.d.ts",
+      "import": "./dist/benchmark/token-counter.js"
     }
+  },
+  "files": [
+    "dist",
+    "!dist/**/*.test.*"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/norhther/delta-mcp.git"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "scripts": {
     "build": "tsc --build",
@@ -22,7 +33,9 @@
     "dev": "tsc --watch"
   },
   "dependencies": {
-    "cbor-x": "^1.5.0",
     "zod": "^3.23.0"
+  },
+  "optionalDependencies": {
+    "cbor-x": "^1.5.0"
   }
 }
