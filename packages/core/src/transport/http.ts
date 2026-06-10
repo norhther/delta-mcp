@@ -157,12 +157,14 @@ export function createHttpHandler(handler: HttpMessageHandler, opts: HttpHandler
     }
 
     const response = await handler(msg, req);
-    const resCodec = pickResponseCodec(req.headers.accept, reqCodec);
-    res.writeHead(200, { "Content-Type": resCodec.contentType });
     if (!response) {
-      res.end("");
+      // Notification — MCP Streamable HTTP: 202 Accepted, no body.
+      res.writeHead(202);
+      res.end();
       return;
     }
+    const resCodec = pickResponseCodec(req.headers.accept, reqCodec);
+    res.writeHead(200, { "Content-Type": resCodec.contentType });
     res.end(resCodec.encode(response));
   };
 }

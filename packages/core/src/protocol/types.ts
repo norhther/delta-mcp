@@ -30,6 +30,24 @@ export type JsonRpcResponse = z.infer<typeof JsonRpcResponseSchema>;
 export const DELTA_PROTOCOL_VERSION = "delta-mcp/0.1.0";
 export const MCP_BASELINE_VERSION = "2025-11-25";
 
+const DELTA_VERSION_PREFIX = "delta-mcp/";
+
+/**
+ * Version-skew policy (negotiate down, never hard-fail):
+ *  - Non-delta versions (standard MCP date versions, absent field) are
+ *    compatible — behavior stays capability-driven, per ADR-001.
+ *  - Delta versions are compatible iff the major component matches ours.
+ *    Incompatible clients get a baseline-MCP response from `initialize`.
+ */
+export function isDeltaVersionCompatible(version: unknown): boolean {
+  if (typeof version !== "string" || !version.startsWith(DELTA_VERSION_PREFIX)) {
+    return true;
+  }
+  const major = version.slice(DELTA_VERSION_PREFIX.length).split(".")[0];
+  const ownMajor = DELTA_PROTOCOL_VERSION.slice(DELTA_VERSION_PREFIX.length).split(".")[0];
+  return major === ownMajor;
+}
+
 // Standard error codes (aligned with spec convergence: -32002 → -32602)
 export const ErrorCodes = {
   PARSE_ERROR: -32700,

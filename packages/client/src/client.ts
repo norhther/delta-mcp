@@ -40,9 +40,10 @@ export class DeltaClient {
   constructor(private transport: Transport) {}
 
   async initialize(clientInfo: { name: string; version: string } = { name: "delta-mcp-client", version: "0.1.0" }): Promise<SessionInfo> {
+    // codeExecution deliberately not advertised — no sandbox implementation
+    // exists yet. Only advertise capabilities the client can actually honor.
     const caps: ClientCapabilities = {
       encoding: { compactJson: true },
-      codeExecution: true,
     };
 
     const clientCaps = {

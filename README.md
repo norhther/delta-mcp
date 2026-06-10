@@ -200,7 +200,7 @@ npx @delta-mcp/cli bench   node ./server.js                        # benchmark
 
 ## Conformance
 
-70 tests across 9 scenarios. Run with:
+75 tests across 10 scenarios. Run with:
 
 ```bash
 npm run conformance
@@ -217,6 +217,7 @@ npm run conformance
 | CS-07 | Benchmark: token reduction, latency, overhead targets |
 | CS-08 | HTTP transport: version header exemption, codec round-trip |
 | CS-09 | OAuth 2.1 end-to-end: 401 → PRM discovery → authenticated call, bad-token rejection |
+| CS-10 | Protocol soundness: version-skew downgrade, notification semantics, honest capabilities, HTTP 202 |
 
 Full results: [`docs/benchmarks/results.md`](docs/benchmarks/results.md)
 

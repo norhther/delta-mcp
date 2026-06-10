@@ -28,7 +28,9 @@ describe("CS-01: Initialize handshake", () => {
   it("CS-01-04: server advertises encoding capabilities", () => {
     const enc = fx.client.sessionInfo.capabilities.encoding;
     expect(enc?.compactJson).toBe(true);
-    expect(enc?.schemaHashReferencing).toBe(true);
+    // schemaHashReferencing is intentionally NOT advertised until implemented
+    // on the wire — see CS-10-03.
+    expect(enc?.schemaHashReferencing).toBeFalsy();
   });
 
   it("CS-01-05: stdio handshake negotiates compact-json and keeps working", async () => {
