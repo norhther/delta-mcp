@@ -11,7 +11,8 @@
   "dependencies": {
     "@delta-mcp/client": "^0.1.0",
     "@delta-mcp/core": "^0.1.0",
-    "@delta-mcp/server": "^0.1.0"
+    "@delta-mcp/server": "^0.1.0",
+    "@modelcontextprotocol/sdk": "^1.29.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

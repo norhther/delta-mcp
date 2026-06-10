@@ -96,12 +96,15 @@ export abstract class DeltaServer {
   private handleInitialize(msg: JsonRpcRequest, id: unknown): JsonRpcResponse {
     const params = msg.params as any;
     const clientCaps = params?.capabilities ?? {};
+    const clientVersion: unknown = params?.protocolVersion;
 
-    // Version skew: a delta client with an incompatible major gets a baseline
-    // MCP response — no extensions, plain JSON. Never a hard failure (ADR-001).
-    // Standard MCP clients (date versions / no version) pass through; their
-    // behavior is capability-driven below.
-    if (!isDeltaVersionCompatible(params?.protocolVersion)) {
+    // A delta-aware client sends "delta-mcp/x.y.z". Anything else (MCP date
+    // versions like "2025-11-25", absent field) is a standard MCP client —
+    // respond with the baseline version so the official SDK doesn't reject us.
+    const isClientDelta =
+      typeof clientVersion === "string" && clientVersion.startsWith("delta-mcp/");
+
+    if (!isClientDelta || !isDeltaVersionCompatible(clientVersion)) {
       this.clientProgressiveDisclosure = false;
       return {
         jsonrpc: "2.0",
