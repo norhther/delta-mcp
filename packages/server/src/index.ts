@@ -6,9 +6,11 @@ import {
   handleToolResult,
   detectAndHandleRateLimit,
   negotiate,
+  isDeltaVersionCompatible,
   DELTA_PROTOCOL_VERSION,
   MCP_BASELINE_VERSION,
   ErrorCodes,
+  type JsonRpcId,
   type JsonRpcRequest,
   type JsonRpcResponse,
   type ServerCapabilities,
@@ -50,9 +52,11 @@ export abstract class DeltaServer {
         progressiveDisclosure: true,
         lazyLoading: true,
       },
+      // schemaHashReferencing deliberately not advertised: the registry
+      // computes hashes, but no wire message consumes them yet. Capability
+      // advertisement is a contract — only advertise what is implemented.
       encoding: {
         compactJson: true,
-        schemaHashReferencing: true,
       },
       ...this.opts.capabilities,
     };
@@ -61,6 +65,14 @@ export abstract class DeltaServer {
   private async handle(msg: JsonRpcRequest): Promise<JsonRpcResponse | null> {
     const id = (msg as any).id ?? null;
 
+    // JSON-RPC 2.0: a request without `id` is a notification — it MUST NOT
+    // receive a response, not even an error. Process it, then drop the reply.
+    const isNotification = (msg as any).id === undefined;
+    const response = await this.dispatch(msg, id);
+    return isNotification ? null : response;
+  }
+
+  private async dispatch(msg: JsonRpcRequest, id: JsonRpcId): Promise<JsonRpcResponse | null> {
     switch (msg.method) {
       case "initialize":
         return this.handleInitialize(msg, id);
@@ -84,6 +96,23 @@ export abstract class DeltaServer {
   private handleInitialize(msg: JsonRpcRequest, id: unknown): JsonRpcResponse {
     const params = msg.params as any;
     const clientCaps = params?.capabilities ?? {};
+
+    // Version skew: a delta client with an incompatible major gets a baseline
+    // MCP response — no extensions, plain JSON. Never a hard failure (ADR-001).
+    // Standard MCP clients (date versions / no version) pass through; their
+    // behavior is capability-driven below.
+    if (!isDeltaVersionCompatible(params?.protocolVersion)) {
+      this.clientProgressiveDisclosure = false;
+      return {
+        jsonrpc: "2.0",
+        id: id as any,
+        result: {
+          protocolVersion: MCP_BASELINE_VERSION,
+          serverInfo: { name: this.opts.name, version: this.opts.version },
+          capabilities: {},
+        },
+      };
+    }
 
     // Detect if client supports progressive disclosure
     this.clientProgressiveDisclosure =
