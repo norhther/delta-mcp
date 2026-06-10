@@ -123,6 +123,7 @@ The `MCP-Protocol-Version` header carries the *baseline MCP* version (2025-11-25
 | [`examples/stdio-server`](examples/stdio-server) | Minimal server with two tools — start here |
 | [`examples/filesystem-server`](examples/filesystem-server) | Real-world server: read/write/list/search files, path sandbox, auto-truncation + pagination |
 | [`examples/client-usage`](examples/client-usage) | Connect with `DeltaClient`, progressive disclosure, on-demand schema fetch, tool calls |
+| [`examples/pagination`](examples/pagination) | 1 000-record server, 6 scenarios: manual nav, jump-to-page, custom page size, filter+paginate, auto-fetch all, last page |
 | [`examples/result-handler`](examples/result-handler) | Truncation, pagination, object summarization, and rate-limit handling in isolation |
 | [`examples/http-oauth-server`](examples/http-oauth-server) | HTTP server with full OAuth 2.1 resource-server mode (RS256, PRM discovery, curl walkthrough) |
 
