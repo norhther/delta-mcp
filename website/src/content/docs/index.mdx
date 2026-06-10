@@ -1,6 +1,54 @@
 ---
 title: Delta-MCP
-description: Token-efficient MCP reimplementation.
+description: Token-efficient MCP reimplementation. 89% fewer tokens on tool definitions, measured.
+template: splash
+hero:
+  tagline: Same JSON-RPC 2.0 wire format. 89% fewer tokens on tool definitions. Leaner discovery model.
+  actions:
+    - text: Get Started
+      link: /delta-mcp/getting-started/
+      icon: right-arrow
+      variant: primary
+    - text: View on GitHub
+      link: https://github.com/norhther/delta-mcp
+      icon: external
 ---
 
-placeholder
+import { Card, CardGrid } from "@astrojs/starlight/components";
+
+## Why Delta-MCP
+
+Standard MCP has two token bloat problems.
+
+**Tool-definition bloat.** Every tool's full JSON schema loads into context at startup — even tools the model never uses. With 10 tools you're paying 850+ tokens before any work happens. With 50 tools across enterprise servers, thousands.
+
+**Tool-result bloat.** Large outputs (file reads, search results, API responses) route through LLM context unfiltered. One 50 KB file read can destroy your context budget.
+
+Delta-MCP fixes both.
+
+## Numbers
+
+| | Standard MCP | Delta-MCP |
+|--|-------------|-----------|
+| 5-tool server init | 910 tokens | **97 tokens** |
+| 20-tool server init | ~3 600 tokens | **378 tokens** |
+| Definition overhead (1/5 tools used) | 910 tokens upfront | **58 tokens on-demand** |
+| Tool-selection accuracy (Opus 4.5) | 79.5% | **88.1%** |
+| Compact-JSON wire reduction | — | **−18.1%** |
+
+## Key Features
+
+<CardGrid>
+  <Card title="Progressive Disclosure" icon="rocket">
+    `tools/list` returns names + 60-char descriptions only. Full schemas fetched on demand and cached. 89% fewer tokens at discovery.
+  </Card>
+  <Card title="Result Handler" icon="document">
+    Large outputs truncated, paginated, or summarized automatically. The model never sees more than it needs.
+  </Card>
+  <Card title="Compact Wire Encoding" icon="seti:json">
+    Negotiated at `initialize`. 18% smaller payloads. Auto-fallback to standard JSON for unaware clients.
+  </Card>
+  <Card title="OAuth 2.1" icon="approve-check-circle">
+    Resource-server only. Stateless JWT validation + RFC 9728 PRM discovery. One config option.
+  </Card>
+</CardGrid>
