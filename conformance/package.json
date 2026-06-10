@@ -1,6 +1,7 @@
 {
   "name": "@delta-mcp/conformance",
   "version": "0.1.0",
+  "private": true,
   "description": "MCP2 conformance suite and E2E benchmarks",
   "type": "module",
   "scripts": {
