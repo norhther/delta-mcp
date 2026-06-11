@@ -98,6 +98,16 @@ describe("CS-09: OAuth 2.1 end-to-end over HTTP", () => {
     expect(prm.bearer_methods_supported).toContain("header");
   });
 
+  it("CS-09-08: PRM is publicly reachable from a browser origin (CORS *)", async () => {
+    // RFC 9728 metadata is public, like AS metadata — a browser-based client
+    // must be able to discover its AS without being on the Origin allowlist.
+    const res = await fetch(`${url}/.well-known/oauth-protected-resource`, {
+      headers: { Origin: "https://some-web-client.example.com" },
+    });
+    expect(res.status).toBe(200);
+    expect(res.headers.get("access-control-allow-origin")).toBe("*");
+  });
+
   it("CS-09-03: valid token (correct audience, good signature) is accepted", async () => {
     const token = makeJwt({ sub: "user1", aud: resourceUrl, exp: Math.floor(Date.now() / 1000) + 3600 });
     const res = await fetch(url, {

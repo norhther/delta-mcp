@@ -1,7 +1,12 @@
 import type { IncomingMessage, ServerResponse } from "http";
 import { randomUUID } from "crypto";
 import type { JsonRpcRequest, JsonRpcResponse } from "../protocol/types.js";
-import { MCP_BASELINE_VERSION, ErrorCodes, isJsonRpcRequestShape } from "../protocol/types.js";
+import {
+  MCP_BASELINE_VERSION,
+  SUPPORTED_MCP_VERSIONS,
+  ErrorCodes,
+  isJsonRpcRequestShape,
+} from "../protocol/types.js";
 import { type Codec, getCodec, getCodecForContentType } from "../encoding/codec.js";
 import {
   buildPRMDocument,
@@ -136,6 +141,24 @@ export function createHttpHandler(handler: HttpMessageHandler, opts: HttpHandler
       }
     }
 
+    // RFC 9728 Protected Resource Metadata — unauthenticated, *public*
+    // discovery endpoint. Served before Origin validation with permissive
+    // CORS, like AS metadata: browser-based clients must be able to discover
+    // their authorization server without being on the operator's allowlist.
+    // There is nothing here worth rebinding for — the document is public.
+    if (opts.oauth && req.method === "GET" && reqPath(req) === PRM_PATH) {
+      const prm = buildPRMDocument(opts.oauth.resourceUrl, opts.oauth.authorizationServers, {
+        signingAlgs: opts.oauth.signingAlgs,
+        documentationUrl: opts.oauth.documentationUrl,
+      });
+      res.writeHead(200, {
+        "Content-Type": "application/json",
+        "Access-Control-Allow-Origin": "*",
+      });
+      res.end(JSON.stringify(prm));
+      return;
+    }
+
     // DNS-rebinding protection (spec MUST): a browser page can reach
     // localhost-bound servers via a rebound hostname, but it cannot forge the
     // Origin header. Reject any browser-originated request whose Origin the
@@ -165,19 +188,6 @@ export function createHttpHandler(handler: HttpMessageHandler, opts: HttpHandler
         res.end();
         return;
       }
-    }
-
-    // RFC 9728 Protected Resource Metadata — unauthenticated discovery endpoint.
-    // Served only in full OAuth mode; lets a client follow the 401 challenge to
-    // find its authorization server.
-    if (opts.oauth && req.method === "GET" && reqPath(req) === PRM_PATH) {
-      const prm = buildPRMDocument(opts.oauth.resourceUrl, opts.oauth.authorizationServers, {
-        signingAlgs: opts.oauth.signingAlgs,
-        documentationUrl: opts.oauth.documentationUrl,
-      });
-      res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify(prm));
-      return;
     }
 
     // Server-initiated SSE streams are not implemented. The Streamable HTTP
@@ -221,9 +231,10 @@ export function createHttpHandler(handler: HttpMessageHandler, opts: HttpHandler
       const token = auth?.startsWith("Bearer ") ? auth.slice(7).trim() : "";
       const ok = token.length > 0 && (opts.validateToken ? await opts.validateToken(token, req) : true);
       if (!ok) {
-        res.writeHead(401, {
-          "WWW-Authenticate": `Bearer realm="delta-mcp", resource_metadata="${PRM_PATH}"`,
-        });
+        // No resource_metadata hint here: the PRM endpoint is only served in
+        // full OAuth mode, and RFC 9728 requires an absolute URL anyway —
+        // advertising a path that 405s would send clients down a dead end.
+        res.writeHead(401, { "WWW-Authenticate": `Bearer realm="delta-mcp"` });
         res.end();
         return;
       }
@@ -264,6 +275,14 @@ export function createHttpHandler(handler: HttpMessageHandler, opts: HttpHandler
     // client doesn't know the negotiated version until initialize returns.
     if (msg.method !== "initialize" && !clientVersion) {
       return sendMissingVersion(res);
+    }
+    // When present, the value must be a version we support — the spec says
+    // unsupported versions SHOULD get 400, and silently proceeding hides
+    // client misconfiguration.
+    if (clientVersion && !SUPPORTED_MCP_VERSIONS.includes(clientVersion)) {
+      res.writeHead(400, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: `Unsupported MCP-Protocol-Version: ${clientVersion}` }));
+      return;
     }
 
     // Session identity (MCP Streamable HTTP). One handler instance serves many

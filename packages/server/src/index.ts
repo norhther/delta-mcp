@@ -146,7 +146,10 @@ export abstract class DeltaServer {
         result: {
           protocolVersion: MCP_BASELINE_VERSION,
           serverInfo: { name: this.opts.name, version: this.opts.version },
-          capabilities: {},
+          // Baseline MCP capability shape. Hosts gate tools/list on the
+          // presence of `tools` — an empty capabilities object reads as
+          // "this server has no tools" and the host never asks for them.
+          capabilities: { tools: { listChanged: false } },
         },
       };
     }
@@ -260,11 +263,15 @@ export abstract class DeltaServer {
           result: { content: [{ type: "text", text: JSON.stringify(rl) }] },
         };
       }
+      // MCP separates protocol errors from execution errors: a throwing tool
+      // is an *execution* failure the model should see and reason about, so it
+      // goes in the result with isError — a JSON-RPC error would terminate
+      // most host agent loops instead.
       const message = err instanceof Error ? err.message : "Tool execution failed";
       return {
         jsonrpc: "2.0",
         id: id as any,
-        error: { code: ErrorCodes.INTERNAL_ERROR, message },
+        result: { content: [{ type: "text", text: message }], isError: true },
       };
     }
   }
@@ -283,11 +290,19 @@ export abstract class DeltaServer {
    *
    * Codec negotiation is per-request over HTTP (Content-Type / Accept), so no
    * stdio-style scheduled switch is needed.
+   *
+   * Pass `onError` to handle listen-time failures (EADDRINUSE, EACCES…);
+   * without it Node's default applies — an uncaught exception that crashes
+   * the process. Loud is the right default, but a supervisor-managed
+   * deployment usually wants to log and retry instead.
    */
-  startHttp(opts: { port?: number; host?: string } & HttpHandlerOptions = {}): Server {
-    const { port = 3000, host = "127.0.0.1", ...httpOpts } = opts;
+  startHttp(
+    opts: { port?: number; host?: string; onError?: (err: Error) => void } & HttpHandlerOptions = {}
+  ): Server {
+    const { port = 3000, host = "127.0.0.1", onError, ...httpOpts } = opts;
     const handler = createHttpHandler((msg, _req, sessionId) => this.handle(msg, sessionId), httpOpts);
     const server = createServer((req, res) => void handler(req, res));
+    if (onError) server.on("error", onError);
     server.listen(port, host);
     return server;
   }

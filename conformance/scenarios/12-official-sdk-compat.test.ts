@@ -35,6 +35,18 @@ describe("CS-12: Official @modelcontextprotocol/sdk client compatibility", () =>
     expect(client).toBeDefined();
   });
 
+  it("CS-12-07: server advertises the tools capability to standard clients", () => {
+    // Hosts gate tools/list on `capabilities.tools` — an empty capabilities
+    // object reads as "no tools" and the host never fetches the tool list.
+    const caps = client.getServerCapabilities();
+    expect(caps?.tools).toBeDefined();
+  });
+
+  it("CS-12-08: throwing tool surfaces as isError result through the SDK", async () => {
+    const result = await client.callTool({ name: "fail", arguments: {} });
+    expect(result.isError).toBe(true);
+  });
+
   it("CS-12-02: tools/list returns full schemas for standard client", async () => {
     const result = await client.listTools();
     expect(result.tools.length).toBeGreaterThan(0);

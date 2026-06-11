@@ -1,33 +1,28 @@
-import { z } from "zod";
-
 // JSON-RPC 2.0 base — wire format unchanged for ecosystem compatibility
-export const JsonRpcIdSchema = z.union([z.string(), z.number(), z.null()]);
-export type JsonRpcId = z.infer<typeof JsonRpcIdSchema>;
+export type JsonRpcId = string | number | null;
 
-export const JsonRpcRequestSchema = z.object({
-  jsonrpc: z.literal("2.0"),
-  id: JsonRpcIdSchema.optional(),
-  method: z.string(),
-  params: z.unknown().optional(),
-});
-export type JsonRpcRequest = z.infer<typeof JsonRpcRequestSchema>;
+export interface JsonRpcRequest {
+  jsonrpc: "2.0";
+  id?: JsonRpcId;
+  method: string;
+  params?: unknown;
+}
 
-export const JsonRpcResponseSchema = z.object({
-  jsonrpc: z.literal("2.0"),
-  id: JsonRpcIdSchema,
-  result: z.unknown().optional(),
-  error: z
-    .object({
-      code: z.number(),
-      message: z.string(),
-      data: z.unknown().optional(),
-    })
-    .optional(),
-});
-export type JsonRpcResponse = z.infer<typeof JsonRpcResponseSchema>;
+export interface JsonRpcError {
+  code: number;
+  message: string;
+  data?: unknown;
+}
+
+export interface JsonRpcResponse {
+  jsonrpc: "2.0";
+  id: JsonRpcId;
+  result?: unknown;
+  error?: JsonRpcError;
+}
 
 // MCP2 protocol version
-export const DELTA_PROTOCOL_VERSION = "delta-mcp/0.1.0";
+export const DELTA_PROTOCOL_VERSION = "delta-mcp/0.2.0";
 export const MCP_BASELINE_VERSION = "2025-11-25";
 
 const DELTA_VERSION_PREFIX = "delta-mcp/";
@@ -59,9 +54,23 @@ export function isJsonRpcRequestShape(value: unknown): value is JsonRpcRequest {
     typeof value === "object" &&
     value !== null &&
     !Array.isArray(value) &&
+    (value as { jsonrpc?: unknown }).jsonrpc === "2.0" &&
     typeof (value as { method?: unknown }).method === "string"
   );
 }
+
+/**
+ * MCP-Protocol-Version header values this server accepts. The transport layer
+ * (single-endpoint POST JSON-RPC) is identical across these revisions, so a
+ * client pinned to an older date version still interoperates. Anything else
+ * (typos, garbage) gets 400 — the spec says unsupported versions SHOULD be
+ * rejected, and silently proceeding hides client misconfiguration.
+ */
+export const SUPPORTED_MCP_VERSIONS: readonly string[] = [
+  "2025-11-25",
+  "2025-06-18",
+  "2025-03-26",
+];
 
 // Standard error codes (aligned with spec convergence: -32002 → -32602)
 export const ErrorCodes = {

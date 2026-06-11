@@ -40,6 +40,21 @@ describe("CS-03: tools/call", () => {
     expect(Array.isArray(result)).toBe(true);
   });
 
+  it("CS-03-07: throwing tool returns isError result, not a JSON-RPC error", async () => {
+    // MCP separates protocol errors from execution errors. A tool that throws
+    // must produce result.isError so the model can see the failure — a
+    // JSON-RPC error would terminate most host agent loops.
+    const res = await fx.transport.send("tools/call", { name: "fail", arguments: {} });
+    expect(res.error).toBeUndefined();
+    const result = res.result as { isError?: boolean; content: Array<{ type: string; text: string }> };
+    expect(result.isError).toBe(true);
+    expect(result.content[0]?.text).toContain("intentional demo failure");
+  });
+
+  it("CS-03-08: DeltaClient surfaces isError results as throws", async () => {
+    await expect(fx.client.callTool("fail", {})).rejects.toThrow(/intentional demo failure/);
+  });
+
   it("CS-03-06: tools/call without an arguments field gets {} not undefined", async () => {
     // Models routinely omit `arguments` for zero-param tools. The tool handler
     // must receive an empty object — `args.foo` on undefined is a TypeError.

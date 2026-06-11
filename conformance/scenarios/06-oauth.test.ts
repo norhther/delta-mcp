@@ -3,6 +3,7 @@
  * Verifies: PRM document structure, WWW-Authenticate header, JWT validation logic
  */
 import { describe, it, expect } from "vitest";
+import { createServer } from "http";
 import {
   buildPRMDocument,
   buildWWWAuthenticate,
@@ -141,6 +142,78 @@ describe("CS-06: OAuth 2.1 resource-server", () => {
       requireExpiry: false,
     });
     expect(result.valid).toBe(true);
+  });
+
+  // ── Opaque tokens via RFC 7662 introspection ─────────────────────────────
+
+  function startIntrospectionAS(answer: Record<string, unknown>): Promise<{ url: string; close: () => Promise<void> }> {
+    return new Promise((resolve) => {
+      const server = createServer((_req, res) => {
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify(answer));
+      });
+      server.listen(0, "127.0.0.1", () => {
+        const { port } = server.address() as { port: number };
+        resolve({
+          url: `http://127.0.0.1:${port}/introspect`,
+          close: () => new Promise((r) => server.close(() => r())),
+        });
+      });
+    });
+  }
+
+  it("CS-06-13: opaque (non-JWT) token is accepted via introspection", async () => {
+    // RFC 7662 exists for tokens that cannot be parsed locally — an opaque
+    // token must reach the introspection endpoint, not die on JWT parsing.
+    const as = await startIntrospectionAS({
+      active: true,
+      sub: "user7",
+      aud: RESOURCE_URL,
+      scope: "tools:call",
+      exp: Math.floor(Date.now() / 1000) + 3600,
+    });
+    try {
+      const result = await validateToken("opaque-token-abc123", RESOURCE_URL, {
+        introspectionEndpoint: as.url,
+      });
+      expect(result.valid).toBe(true);
+      expect(result.subject).toBe("user7");
+      expect(result.scopes).toContain("tools:call");
+    } finally {
+      await as.close();
+    }
+  });
+
+  it("CS-06-14: opaque token the AS reports inactive is rejected", async () => {
+    const as = await startIntrospectionAS({ active: false });
+    try {
+      const result = await validateToken("opaque-revoked", RESOURCE_URL, {
+        introspectionEndpoint: as.url,
+      });
+      expect(result.valid).toBe(false);
+      expect(result.error).toBe("introspection_failed");
+    } finally {
+      await as.close();
+    }
+  });
+
+  it("CS-06-15: opaque token with mismatched introspected aud is rejected (RFC 8707)", async () => {
+    const as = await startIntrospectionAS({ active: true, aud: "https://other.example.com" });
+    try {
+      const result = await validateToken("opaque-wrong-aud", RESOURCE_URL, {
+        introspectionEndpoint: as.url,
+      });
+      expect(result.valid).toBe(false);
+      expect(result.error).toBe("invalid_audience");
+    } finally {
+      await as.close();
+    }
+  });
+
+  it("CS-06-16: opaque token without introspection configured is rejected", async () => {
+    const result = await validateToken("opaque-no-introspection", RESOURCE_URL);
+    expect(result.valid).toBe(false);
+    expect(result.error).toBe("invalid_signature");
   });
 
   it("CS-06-10: custom verifySignature hook is called", async () => {

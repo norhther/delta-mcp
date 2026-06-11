@@ -10,3 +10,5 @@ conformance/**/*.js
 conformance/**/*.d.ts
 examples/**/*.js
 examples/**/*.d.ts
+*.swp
+*.swo

@@ -45,7 +45,7 @@ export class DeltaClient {
     });
   }
 
-  async initialize(clientInfo: { name: string; version: string } = { name: "delta-mcp-client", version: "0.1.0" }): Promise<SessionInfo> {
+  async initialize(clientInfo: { name: string; version: string } = { name: "delta-mcp-client", version: "0.2.0" }): Promise<SessionInfo> {
     // codeExecution deliberately not advertised — no sandbox implementation
     // exists yet. Only advertise capabilities the client can actually honor.
     const caps: ClientCapabilities = {
@@ -140,8 +140,18 @@ export class DeltaClient {
     const res = await this.transport.send("tools/call", { name, arguments: args });
     if (res.error) throw new Error(`tools/call failed: ${res.error.message}`);
 
-    const content = (res.result as { content?: Array<{ type: string; text: string }> }).content;
+    const result = res.result as {
+      content?: Array<{ type: string; text: string }>;
+      isError?: boolean;
+    };
+    const content = result.content;
     const text = content?.find((c) => c.type === "text")?.text;
+
+    // MCP execution error (tool threw server-side). Surface as a throw so
+    // callers keep one failure path for both protocol and execution errors.
+    if (result.isError) {
+      throw new Error(`tools/call failed: ${text ?? "tool execution error"}`);
+    }
     if (text === undefined) return res.result;
     // Our own server JSON-stringifies structured results, but a standard MCP
     // server may return plain text — fall back to the raw string if not JSON.

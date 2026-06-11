@@ -78,10 +78,18 @@ export function buildWWWAuthenticate(
 }
 
 /**
- * Validate a JWT bearer token.
+ * Validate a bearer token.
  *
- * This is a structural validator — it checks format, expiry, and audience
- * without crypto verification. Wire up `verifySignature` for production use.
+ * Two token shapes are supported:
+ *  - **JWT** — local checks (expiry, RFC 8707 audience) plus signature
+ *    verification via `verifySignature` or RFC 7662 introspection.
+ *  - **Opaque** (not a parseable JWT) — only validatable through
+ *    introspection; that is what RFC 7662 exists for. Claims returned by the
+ *    introspection endpoint (active, exp, aud) are enforced instead of local
+ *    parsing. Without an introspection endpoint, opaque tokens are rejected.
+ *
+ * Without `verifySignature` or `introspectionEndpoint` this is structural
+ * only — wire one of them for production use.
  *
  * RFC 8707: token aud must include resourceUrl (resource indicators).
  * Implicit flow + ROPC tokens are rejected by convention (no grant_type check here;
@@ -103,18 +111,34 @@ export async function validateToken(
     requireExpiry?: boolean;
   } = {}
 ): Promise<TokenValidationResult> {
-  // JWT structure check
-  const parts = token.split(".");
-  if (parts.length !== 3) return { valid: false, error: "invalid_signature" };
+  const jwt = parseJwt(token);
 
-  let header: JwtHeader;
-  let payload: JwtPayload;
-  try {
-    header = JSON.parse(Buffer.from(parts[0]!, "base64url").toString()) as JwtHeader;
-    payload = JSON.parse(Buffer.from(parts[1]!, "base64url").toString()) as JwtPayload;
-  } catch {
-    return { valid: false, error: "invalid_signature" };
+  // Opaque token: introspection is the only validation path.
+  if (!jwt) {
+    if (!opts.introspectionEndpoint) return { valid: false, error: "invalid_signature" };
+    const meta = await introspect(token, opts.introspectionEndpoint, opts.clientCredentials);
+    if (!meta) return { valid: false, error: "introspection_failed" };
+
+    // Enforce the same claims as the local JWT path, from the AS's answer
+    // (RFC 7662 §2.2 — introspection responses carry standard JWT claims).
+    if (typeof meta.exp === "number" && meta.exp < Math.floor(Date.now() / 1000)) {
+      return { valid: false, error: "expired" };
+    }
+    const introspectedAud = Array.isArray(meta.aud) ? meta.aud : meta.aud ? [meta.aud] : [];
+    if (introspectedAud.length > 0 && !introspectedAud.includes(resourceUrl)) {
+      return { valid: false, error: "invalid_audience" };
+    }
+
+    return {
+      valid: true,
+      subject: meta.sub,
+      scopes: meta.scope?.split(" ").filter(Boolean) ?? [],
+      clientId: meta.client_id,
+      expiresAt: typeof meta.exp === "number" ? new Date(meta.exp * 1000) : undefined,
+    };
   }
+
+  const { header, payload } = jwt;
 
   // Expiry check. `exp: 0` is a real (long-past) timestamp, so test for
   // presence with typeof, not truthiness.
@@ -137,8 +161,8 @@ export async function validateToken(
     const sigOk = await opts.verifySignature(token, header, payload);
     if (!sigOk) return { valid: false, error: "invalid_signature" };
   } else if (opts.introspectionEndpoint) {
-    const introspected = await introspect(token, opts.introspectionEndpoint, opts.clientCredentials);
-    if (!introspected) return { valid: false, error: "introspection_failed" };
+    const meta = await introspect(token, opts.introspectionEndpoint, opts.clientCredentials);
+    if (!meta) return { valid: false, error: "introspection_failed" };
   }
 
   return {
@@ -150,16 +174,43 @@ export async function validateToken(
   };
 }
 
-/** RFC 7662 token introspection */
+/** Parse a JWT's header + payload, or null if the token is not a JWT (opaque). */
+function parseJwt(token: string): { header: JwtHeader; payload: JwtPayload } | null {
+  const parts = token.split(".");
+  if (parts.length !== 3) return null;
+  try {
+    return {
+      header: JSON.parse(Buffer.from(parts[0]!, "base64url").toString()) as JwtHeader,
+      payload: JSON.parse(Buffer.from(parts[1]!, "base64url").toString()) as JwtPayload,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** RFC 7662 introspection response (subset of standard members). */
+interface IntrospectionResponse {
+  active?: boolean;
+  sub?: string;
+  aud?: string | string[];
+  exp?: number;
+  scope?: string;
+  client_id?: string;
+}
+
+/** RFC 7662 token introspection. Returns the response for an active token, null otherwise. */
 async function introspect(
   token: string,
   endpoint: string,
   credentials?: { id: string; secret: string }
-): Promise<boolean> {
+): Promise<IntrospectionResponse | null> {
   const headers: Record<string, string> = { "Content-Type": "application/x-www-form-urlencoded" };
   if (credentials) {
-    headers["Authorization"] =
-      "Basic " + Buffer.from(`${credentials.id}:${credentials.secret}`).toString("base64");
+    // RFC 6749 §2.3.1: client id and secret are form-urlencoded before being
+    // placed in the Basic credentials — a secret containing ':' or '%' would
+    // otherwise corrupt the header.
+    const basic = `${encodeURIComponent(credentials.id)}:${encodeURIComponent(credentials.secret)}`;
+    headers["Authorization"] = "Basic " + Buffer.from(basic).toString("base64");
   }
 
   // Bounded: a hung AS must fail the token, not pin the request open until
@@ -173,12 +224,17 @@ async function introspect(
       signal: AbortSignal.timeout(INTROSPECTION_TIMEOUT_MS),
     });
   } catch {
-    return false;
+    return null;
   }
 
-  if (!res.ok) return false;
-  const body = (await res.json()) as { active?: boolean };
-  return body.active === true;
+  if (!res.ok) return null;
+  let body: IntrospectionResponse;
+  try {
+    body = (await res.json()) as IntrospectionResponse;
+  } catch {
+    return null;
+  }
+  return body.active === true ? body : null;
 }
 
 const INTROSPECTION_TIMEOUT_MS = 10_000;

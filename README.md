@@ -22,14 +22,14 @@ Delta-MCP fixes both.
 
 | | Standard MCP | Delta-MCP |
 |--|-------------|-----------|
-| 5-tool server init | 910 tokens | **97 tokens** |
+| 6-tool server init | 943 tokens | **118 tokens** |
 | 20-tool server init | ~3600 tokens | **378 tokens** |
-| Definition overhead (1/5 tools used) | 910 tokens upfront | **58 tokens on-demand** |
+| Definition overhead (1/6 tools used) | 943 tokens upfront | **229 tokens on-demand** |
 | Tool-selection accuracy (Opus 4) | 49% | **74%** |
 | Tool-selection accuracy (Opus 4.5) | 79.5% | **88.1%** |
-| Compact-json wire reduction | — | **−18.1%** |
+| Compact-json wire reduction | — | **−17.7%** |
 
-Accuracy numbers from Anthropic lazy tool loading research. Token numbers from `conformance/scenarios/07-benchmark.test.ts` against a 5-tool server with realistic schemas.
+Accuracy numbers from Anthropic lazy tool loading research. Token numbers from `conformance/scenarios/07-benchmark.test.ts` against a 6-tool server with realistic schemas.
 
 ---
 
@@ -40,7 +40,7 @@ Accuracy numbers from Anthropic lazy tool loading research. Token numbers from `
 Delta-MCP replaces eager schema loading with a two-tier model negotiated at `initialize`:
 
 ```
-tools/list    → names + ≤60-char descriptions only  (~97 tokens for 5 tools)
+tools/list    → names + ≤60-char descriptions only  (~115 tokens for 6 tools)
 tools/describe → full schema, on-demand, cached      (~30 tokens per tool)
 ```
 
@@ -219,7 +219,7 @@ npx @delta-mcp/cli bench   node ./server.js                        # benchmark
 
 ## Conformance
 
-103 tests across 13 scenarios (plus 46 package unit tests). Run with:
+114 tests across 13 scenarios (plus 46 package unit tests). Run with:
 
 ```bash
 npm run conformance
@@ -247,10 +247,11 @@ Full results: [`docs/benchmarks/results.md`](docs/benchmarks/results.md)
 
 ## Compatibility
 
-- **Baseline**: MCP 2025-11-25 — Streamable HTTP + stdio transports
+- **Baseline**: MCP 2025-11-25 — Streamable HTTP + stdio transports (older date versions 2025-06-18 / 2025-03-26 accepted on the `MCP-Protocol-Version` header)
 - **Node.js**: ≥20.0.0
+- **Module format**: ESM only — `import` works, `require()` does not
 - **Wire format**: JSON-RPC 2.0 — unchanged, fully interoperable
-- Standard MCP clients connecting to a Delta-MCP server get standard MCP behavior automatically
+- Standard MCP clients connecting to a Delta-MCP server get standard MCP behavior automatically (`capabilities: { tools: { listChanged: false } }`, full schemas, MCP `isError` results for tool execution failures)
 
 ## License
 

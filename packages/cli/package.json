@@ -1,6 +1,6 @@
 {
   "name": "@delta-mcp/cli",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "license": "MIT",
   "description": "Delta-MCP CLI — inspect, test, and benchmark Delta-MCP/MCP servers",
   "type": "module",
@@ -23,7 +23,7 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
-    "@delta-mcp/client": "^0.2.0",
-    "@delta-mcp/core": "^0.2.0"
+    "@delta-mcp/client": "^0.2.1",
+    "@delta-mcp/core": "^0.2.1"
   }
 }

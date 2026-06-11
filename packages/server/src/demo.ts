@@ -153,6 +153,12 @@ class DemoServer extends DeltaServer {
     });
 
     this.tool({
+      name: "fail",
+      description: "Always throws — exercises isError execution results",
+      inputSchema: { type: "object", properties: {} },
+    });
+
+    this.tool({
       name: "run_command",
       description: "Execute shell command in workspace sandbox",
       inputSchema: {
@@ -206,6 +212,9 @@ class DemoServer extends DeltaServer {
 
       case "run_command":
         return { stdout: `Stub output for: ${args["command"]}`, stderr: "", exitCode: 0 };
+
+      case "fail":
+        throw new Error("intentional demo failure");
 
       default:
         throw new Error(`Unknown tool: ${name}`);

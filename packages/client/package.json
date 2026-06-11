@@ -1,6 +1,6 @@
 {
   "name": "@delta-mcp/client",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "license": "MIT",
   "description": "MCP2 client with progressive disclosure",
   "type": "module",
@@ -28,9 +28,9 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@delta-mcp/core": "^0.2.0"
+    "@delta-mcp/core": "^0.2.1"
   },
   "devDependencies": {
-    "vitest": "^2.0.0"
+    "vitest": "^3.2.6"
   }
 }

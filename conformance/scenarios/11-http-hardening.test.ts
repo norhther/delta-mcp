@@ -219,6 +219,36 @@ describe("CS-11: HTTP hardening", () => {
     });
   });
 
+  describe("protocol version validation", () => {
+    let fx: { server: Server; url: string };
+    beforeAll(async () => { fx = await startServer({}); });
+    afterAll(async () => { await new Promise((r) => fx.server.close(r)); });
+
+    it("CS-11-14: unsupported MCP-Protocol-Version value gets 400", async () => {
+      const res = await fetch(fx.url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "MCP-Protocol-Version": "not-a-version" },
+        body: RPC,
+      });
+      expect(res.status).toBe(400);
+      const body = await res.json() as { error?: string };
+      expect(body.error).toContain("Unsupported MCP-Protocol-Version");
+    });
+
+    it("CS-11-15: previous MCP date versions are accepted", async () => {
+      // The POST JSON-RPC transport is identical across these revisions —
+      // a client pinned to an older date version must still interoperate.
+      for (const version of ["2025-06-18", "2025-03-26"]) {
+        const res = await fetch(fx.url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "MCP-Protocol-Version": version },
+          body: RPC,
+        });
+        expect(res.status).toBe(200);
+      }
+    });
+  });
+
   describe("defaults", () => {
     let fx: { server: Server; url: string };
     beforeAll(async () => { fx = await startServer({}); });

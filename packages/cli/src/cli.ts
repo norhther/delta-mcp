@@ -30,8 +30,15 @@ async function main(): Promise<void> {
       await cmdBench(rest);
       break;
     case "help":
-    default:
+    case undefined:
       printHelp();
+      break;
+    default:
+      // A typo'd command in a script must fail loudly, not "succeed" by
+      // printing help and exiting 0.
+      console.error(`Unknown command: ${command}`);
+      printHelp();
+      process.exit(1);
   }
 }
 
@@ -96,7 +103,10 @@ async function cmdCall(args: string[]): Promise<void> {
   try {
     parsedArgs = JSON.parse(jsonArgs) as Record<string, unknown>;
   } catch {
+    // Most common cause: the trailing <json-args> was omitted, so positional
+    // parsing shifted and the tool name landed here. Point at the usage.
     console.error(`Invalid JSON args: ${jsonArgs}`);
+    console.error("Usage: delta-mcp call <server-command> [server-args...] <tool-name> <json-args>");
     process.exit(1);
   }
 

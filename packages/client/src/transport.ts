@@ -133,11 +133,17 @@ export class HttpClientTransport {
   private codec: Codec = jsonCodec;
   /** Assigned by the server on initialize; echoed on every later request. */
   private sessionId?: string;
+  private readonly timeoutMs: number;
 
   constructor(
     private baseUrl: string,
-    private token?: string
-  ) {}
+    private token?: string,
+    /** Per-request deadline, matching the stdio transport. A hung server must
+     *  fail the request, not pin the client open forever. */
+    timeoutMs = DEFAULT_REQUEST_TIMEOUT_MS
+  ) {
+    this.timeoutMs = timeoutMs;
+  }
 
   /** Switch to the negotiated codec for subsequent requests. */
   setEncoding(format: EncodingFormat): void {
@@ -176,11 +182,20 @@ export class HttpClientTransport {
     const id = this.nextId++;
     const msg: JsonRpcRequest = { jsonrpc: "2.0", id, method, params };
 
-    const res = await fetch(this.baseUrl, {
-      method: "POST",
-      headers: this.headers(),
-      body: this.encodeBody(msg),
-    });
+    let res: Response;
+    try {
+      res = await fetch(this.baseUrl, {
+        method: "POST",
+        headers: this.headers(),
+        body: this.encodeBody(msg),
+        signal: AbortSignal.timeout(this.timeoutMs),
+      });
+    } catch (err) {
+      if (err instanceof DOMException && err.name === "TimeoutError") {
+        throw new Error(`Request "${method}" (id=${id}) timed out after ${this.timeoutMs}ms`);
+      }
+      throw err;
+    }
 
     if (res.status === 401) {
       const wwwAuth = res.headers.get("WWW-Authenticate") ?? "";
