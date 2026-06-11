@@ -127,6 +127,62 @@ describe("Token efficiency benchmark", () => {
     expect(reduction).toBeGreaterThan(0.1); // ≥10% reduction
   });
 
+  it("benchmarkEncoding measures the real compact-json codec, not a simulation", async () => {
+    const { encodeCompact } = await import("../encoding/negotiation.js");
+    const payload = {
+      jsonrpc: "2.0",
+      id: 1,
+      result: {
+        tools: SAMPLE_TOOLS,
+        content: [{ type: "text", text: "hello" }],
+      },
+    };
+
+    const bench = benchmarkEncoding(payload);
+    const realCompactBytes = JSON.stringify(encodeCompact(payload)).length;
+
+    expect(bench.compactBytes).toBe(realCompactBytes);
+    expect(bench.standardBytes).toBe(JSON.stringify(payload).length);
+  });
+
+  it("benchmarkEncoding does not corrupt string values that contain key-like text", () => {
+    // A description whose *value* contains `"name"` — naive string replacement
+    // would shrink the value and misreport wire size.
+    const payload = {
+      jsonrpc: "2.0",
+      id: 1,
+      result: { note: 'field "name" and "description" are required' },
+    };
+
+    const bench = benchmarkEncoding(payload);
+    // Value text must survive: only the 3 top-level keys (jsonrpc, id, result)
+    // shrink (7→1, 2→1, 6→1 chars = 12 bytes saved).
+    expect(bench.standardBytes - bench.compactBytes).toBe(12);
+  });
+
+  it("formatBenchmark renders an aligned table (all lines equal width)", () => {
+    const results = [
+      benchmarkToolDiscovery(SAMPLE_TOOLS),
+      benchmarkToolDiscovery([...SAMPLE_TOOLS, ...SAMPLE_TOOLS, ...SAMPLE_TOOLS, ...SAMPLE_TOOLS]),
+    ];
+
+    const lines = formatBenchmark(results).split("\n").filter((l) => l.length > 0);
+    const widths = new Set(lines.map((l) => l.length));
+    expect(widths.size).toBe(1);
+
+    // Every row's column separators must line up with the border's junctions
+    const border = lines.find((l) => l.startsWith("├"))!;
+    const junctions = [...border].flatMap((ch, i) => (ch === "┬" || ch === "┼" ? [i] : []));
+    // Title row spans the full width; only check rows with column separators
+    const columnRows = lines.filter((l) => l.startsWith("│") && (l.match(/│/g) ?? []).length > 2);
+    expect(columnRows.length).toBeGreaterThanOrEqual(3); // header + 2 data rows
+    for (const line of columnRows) {
+      for (const j of junctions) {
+        expect(line[j]).toBe("│");
+      }
+    }
+  });
+
   it("token estimator is reasonably calibrated", () => {
     // ~4 chars per token — test against known inputs
     expect(estimateTokens("hello world")).toBe(4); // '"hello world"' = 13 chars / 4 ≈ 4

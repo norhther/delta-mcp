@@ -141,11 +141,12 @@ async function cmdBench(args: string[]): Promise<void> {
 
     const result = benchmarkToolDiscovery(schemas);
     console.log(formatBenchmark([result]));
+    const label = (s: string) => `  ${s.padEnd(32)}`;
     console.log(`\nLatency:`);
-    console.log(`  tools/list (summaries):         ${listMs}ms`);
-    console.log(`  tools/describe all (${schemas.length} schemas): ${describeMs}ms`);
-    console.log(`  Standard MCP equivalent:        ${listMs + describeMs}ms (upfront)`);
-    console.log(`  Delta-MCP first-tool latency:        ${listMs}ms + schema-on-demand`);
+    console.log(`${label("tools/list (summaries):")}${listMs}ms`);
+    console.log(`${label(`tools/describe all (${schemas.length} schemas):`)}${describeMs}ms`);
+    console.log(`${label("Standard MCP equivalent:")}${listMs + describeMs}ms (upfront)`);
+    console.log(`${label("Delta-MCP first-tool latency:")}${listMs}ms + schema-on-demand`);
   } finally {
     await transport.close();
   }

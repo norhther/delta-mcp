@@ -1,4 +1,5 @@
 import type { ToolDefinition, ToolSummary } from "../protocol/types.js";
+import { encodeCompact } from "../encoding/negotiation.js";
 
 /**
  * Token estimation for MCP2 vs standard MCP comparison.
@@ -55,17 +56,9 @@ export function benchmarkEncoding(payload: unknown): {
   reductionPercent: string;
 } {
   const standard = JSON.stringify(payload);
-
-  // Simulate compact encoding by shortening common keys
-  const compact = standard
-    .replace(/"jsonrpc"/g, '"j"')
-    .replace(/"method"/g, '"m"')
-    .replace(/"params"/g, '"p"')
-    .replace(/"result"/g, '"r"')
-    .replace(/"error"/g, '"e"')
-    .replace(/"description"/g, '"d"')
-    .replace(/"inputSchema"/g, '"s"')
-    .replace(/"name"/g, '"n"');
+  // Measure the real wire codec — a key-replacement simulation would drift
+  // from COMPACT_KEY_MAP and corrupt string values containing key-like text.
+  const compact = JSON.stringify(encodeCompact(payload));
 
   const reduction = ((standard.length - compact.length) / standard.length) * 100;
 
@@ -78,19 +71,36 @@ export function benchmarkEncoding(payload: unknown): {
 
 /** Format benchmark results for console output */
 export function formatBenchmark(results: BenchmarkResult[]): string {
-  const header = `
-┌─────────────────────────────────────────────────────────────┐
-│              MCP2 Token Efficiency Benchmark                 │
-├─────────────────────┬──────────┬──────────┬─────────────────┤
-│ Scenario            │ Standard │   MCP2   │   Reduction     │
-├─────────────────────┼──────────┼──────────┼─────────────────┤`;
+  const title = "MCP2 Token Efficiency Benchmark";
+  const headerCells = ["Scenario", "Standard", "MCP2", "Reduction"];
+  const dataRows = results.map((r) => [
+    r.scenario,
+    `${r.standardTokens} tk`,
+    `${r.mcp2Tokens} tk`,
+    `${r.reductionPercent} (${r.reduction} tk)`,
+  ]);
 
-  const rows = results.map(
-    (r) =>
-      `│ ${r.scenario.padEnd(19)} │ ${String(r.standardTokens).padStart(6)} tk │ ${String(r.mcp2Tokens).padStart(6)} tk │ ${r.reductionPercent.padStart(8)} (${r.reduction} tk) │`
+  const widths = headerCells.map((h, i) =>
+    Math.max(h.length, ...dataRows.map((row) => row[i]!.length))
   );
+  const innerWidth = widths.reduce((sum, w) => sum + w + 2, 0) + widths.length - 1;
 
-  const footer = "└─────────────────────┴──────────┴──────────┴─────────────────┘";
+  const border = (left: string, mid: string, right: string) =>
+    left + widths.map((w) => "─".repeat(w + 2)).join(mid) + right;
+  const row = (cells: string[]) =>
+    "│" + cells.map((c, i) => ` ${c.padEnd(widths[i]!)} `).join("│") + "│";
 
-  return [header, ...rows, footer].join("\n");
+  const leftPad = Math.floor((innerWidth - title.length) / 2);
+  const titleRow = "│" + " ".repeat(leftPad) + title.padEnd(innerWidth - leftPad) + "│";
+
+  return [
+    "",
+    "┌" + "─".repeat(innerWidth) + "┐",
+    titleRow,
+    border("├", "┬", "┤"),
+    row(headerCells),
+    border("├", "┼", "┤"),
+    ...dataRows.map(row),
+    border("└", "┴", "┘"),
+  ].join("\n");
 }
