@@ -125,4 +125,4 @@ if (isPage(last)) {
   console.log(`   Last record: ${JSON.stringify(last.items[last.items.length - 1])}`);
 }
 
-transport.close();
+await transport.close();

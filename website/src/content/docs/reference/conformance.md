@@ -1,6 +1,6 @@
 ---
 title: Conformance Suite
-description: 56 tests across 11 scenarios locking in Delta-MCP protocol correctness, token efficiency, OAuth, and HTTP hardening.
+description: 114 tests across 13 scenarios locking in Delta-MCP protocol correctness, token efficiency, OAuth, and HTTP hardening.
 ---
 
 The conformance suite lives in `conformance/` and runs as a standalone Vitest project against live server instances.
@@ -17,15 +17,17 @@ cd conformance && npm test
 |----|----------|-------|-----------------|
 | CS-01 | Initialize handshake | 5 | Protocol version, capability exchange, compact-JSON negotiation |
 | CS-02 | Progressive disclosure | 7 | `tools/list` returns only names + descriptions; `tools/describe` returns full schema |
-| CS-03 | Tool call | 5 | Basic tool invocation, error propagation, unknown tool handling |
+| CS-03 | Tool call | 8 | Invocation, unknown tool handling, `isError` execution results |
 | CS-04 | Result handler | 12 | Truncation, pagination, object summarization, rate-limit handling |
-| CS-05 | Wire encoding | 10 | Compact-JSON key shortening, CBOR negotiation, fallback to plain JSON |
-| CS-06 | OAuth 2.1 | 10 | PRM document structure, `WWW-Authenticate` header, JWT audience + expiry validation |
-| CS-07 | Benchmark | 8 | ≥78% token reduction on 5-tool server, confirms numbers in docs |
-| CS-08 | HTTP transport | — | Streamable HTTP compliance |
-| CS-09 | OAuth HTTP | — | Full OAuth 2.1 flow over HTTP, PKCE, RS256 |
-| CS-10 | Protocol soundness | — | Version skew negotiation, notification semantics, 202 for notifications |
-| CS-11 | HTTP hardening | — | Request validation, header enforcement, edge cases |
+| CS-05 | Wire encoding | 14 | Compact-JSON key shortening, CBOR negotiation, fallback to plain JSON |
+| CS-06 | OAuth 2.1 primitives | 16 | PRM document, `WWW-Authenticate`, JWT audience + expiry, opaque-token introspection |
+| CS-07 | Benchmark | 8 | ≥78% token reduction on 6-tool server, confirms numbers in docs |
+| CS-08 | HTTP transport | 5 | Streamable HTTP compliance, version header exemption, codec round-trip |
+| CS-09 | OAuth 2.1 end-to-end | 7 | 401 → PRM discovery → authenticated call over HTTP, RS256, public PRM CORS |
+| CS-10 | Protocol soundness | 5 | Version skew negotiation, notification semantics, 202 for notifications |
+| CS-11 | HTTP hardening | 15 | Body limit (413), rate limit (429), timeout (504), Origin (403), version validation (400) |
+| CS-12 | Official SDK compatibility | 8 | Standard `@modelcontextprotocol/sdk` clients get full schemas, tools capability, `isError` |
+| CS-13 | HTTP session isolation | 4 | `Mcp-Session-Id`, concurrent delta + standard clients without cross-talk |
 
 ## Conformance assertions (selected)
 

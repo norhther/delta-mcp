@@ -53,7 +53,7 @@ function verifyRs256(token: string, pubKey: KeyObject): boolean {
 
 class OAuthDemoServer extends DeltaServer {
   constructor() {
-    super({ name: "delta-mcp-oauth-demo", version: "0.1.0" });
+    super({ name: "delta-mcp-oauth-demo", version: "0.2.1" });
 
     this.tool({
       name: "whoami",

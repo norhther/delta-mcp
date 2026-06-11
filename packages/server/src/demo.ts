@@ -10,7 +10,7 @@ class DemoServer extends DeltaServer {
   constructor() {
     super({
       name: "delta-mcp-demo",
-      version: "0.1.0",
+      version: "0.2.1",
       resultHandler: { maxTokens: 500, paginateAfter: 50 },
     });
 

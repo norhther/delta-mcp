@@ -28,17 +28,18 @@ delta-mcp list <server-command> [server-args...]
 ```
 
 ```
-Server: delta-mcp-demo v0.1.0
+Server: delta-mcp-demo v0.2.1
 Mode: progressive
 
-Tools (5):
+Tools (6):
   search               Search docs and return top results
   read_file            Read file contents from the workspace
-  write_file           Write content to a workspace file
-  list_dir             List directory contents
-  file_info            Get metadata for a file path
+  write_file           Write content to a file in workspace
+  list_dir             List directory contents at given path
+  fail                 Always throws — exercises isError execution results
+  run_command          Execute shell command in workspace sandbox
 
-  Token cost: ~97 tokens
+  Token cost: ~115 tokens
 ```
 
 ### `describe`
@@ -97,17 +98,21 @@ delta-mcp bench node server.js
 Output shows the token savings achieved by progressive disclosure vs standard MCP:
 
 ```
-Benchmarking: delta-mcp-demo v0.1.0
+Benchmarking: delta-mcp-demo v0.2.1
 
-  Standard MCP tokens:  910   (all schemas upfront)
-  Progressive tokens:    97   (names + descriptions only)
-  Savings:              89.3%
-
-  Schema overhead eliminated: 100% (only 1 of 5 schemas loaded on-demand)
+┌───────────────────────────────────────────────────────┐
+│            MCP2 Token Efficiency Benchmark            │
+├──────────────────┬──────────┬────────┬────────────────┤
+│ Scenario         │ Standard │ MCP2   │ Reduction      │
+├──────────────────┼──────────┼────────┼────────────────┤
+│ 6-tool discovery │ 943 tk   │ 118 tk │ 87.5% (825 tk) │
+└──────────────────┴──────────┴────────┴────────────────┘
 
 Latency:
-  tools/list (summaries):      <5ms
-  tools/describe all (5):      <10ms
+  tools/list (summaries):         0ms
+  tools/describe all (6 schemas): 1ms
+  Standard MCP equivalent:        1ms (upfront)
+  Delta-MCP first-tool latency:   0ms + schema-on-demand
 ```
 
 ## Usage with multi-arg server commands

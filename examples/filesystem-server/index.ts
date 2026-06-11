@@ -22,6 +22,10 @@ import { DeltaServer } from "@delta-mcp/server";
 const args = process.argv.slice(2);
 const httpFlag = args.indexOf("--http");
 const httpPort = httpFlag !== -1 ? Number(args[httpFlag + 1]) : null;
+if (httpPort !== null && !Number.isInteger(httpPort)) {
+  process.stderr.write("Usage: filesystem-server [--http <port>] [root]\n");
+  process.exit(1);
+}
 const rootArg = httpPort !== null ? args[httpFlag + 2] : args[0];
 const ALLOWED_ROOT = path.resolve(rootArg ?? process.cwd());
 
@@ -168,7 +172,7 @@ class FilesystemServer extends DeltaServer {
 // ── Recursive file search ─────────────────────────────────────────────────────
 
 async function findFiles(dir: string, pattern: string, results: string[] = []): Promise<string[]> {
-  // Limit recursion depth to avoid runaway scans on large trees
+  // Cap total matches to avoid runaway scans on large trees
   if (results.length >= 500) return results;
 
   let entries: fs.Dirent[];

@@ -8,7 +8,7 @@ Standard MCP loads every tool's full JSON schema at `initialize`. With 10 tools 
 Delta-MCP replaces this with a two-tier model negotiated at `initialize`:
 
 ```
-tools/list     → names + ≤60-char descriptions only  (~97 tokens for 5 tools)
+tools/list     → names + ≤60-char descriptions only  (~115 tokens for 6 tools)
 tools/describe → full schema, on-demand, cached       (~30 tokens per tool)
 ```
 
@@ -68,7 +68,7 @@ Standard MCP clients connecting to a Delta-MCP server get full schemas via `tool
 
 | Scenario | Standard MCP | Delta-MCP |
 |----------|-------------|-----------|
-| 5-tool discovery | 910 tokens | **97 tokens** |
+| 6-tool discovery | 943 tokens | **118 tokens** |
 | 20-tool discovery | ~3 600 tokens | **378 tokens** |
-| 1 of 5 tools used | 910 tokens upfront | **58 tokens on-demand** |
+| 1 of 6 tools used | 941 tokens upfront | **229 tokens on-demand** |
 | Tool-selection accuracy (Opus 4.5) | 79.5% | **88.1%** |

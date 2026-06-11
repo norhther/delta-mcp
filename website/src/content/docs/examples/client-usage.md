@@ -8,7 +8,7 @@ Shows how to connect to a Delta-MCP server programmatically using `DeltaClient`.
 ## What it demonstrates
 
 1. **Connecting** — spawn a server as a child process via `StdioClientTransport`
-2. **Progressive disclosure** — `listTools()` returns names + short descriptions only (~97 tokens for 5 tools)
+2. **Progressive disclosure** — `listTools()` returns names + short descriptions only (~115 tokens for 6 tools)
 3. **On-demand schema fetch** — `describeTool(name)` fetches the full JSON schema and caches it
 4. **Calling tools** — `callTool(name, args)` handles schema fetch + call in one step
 

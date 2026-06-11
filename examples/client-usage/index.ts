@@ -30,7 +30,7 @@ async function main() {
 
   // ── 2. List tools — names + short descriptions only ───────────────────────
   // In progressive mode the server sends ≤60-char descriptions, not full schemas.
-  // This is the token saving: ~97 tokens for 5 tools vs ~910 for standard MCP.
+  // This is the token saving: ~118 tokens for the 6-tool demo vs ~943 for standard MCP.
   const tools = await client.listTools();
   console.log("Tools available:");
   for (const t of tools) {
@@ -57,7 +57,7 @@ async function main() {
   const fileResult = await client.callTool("read_file", { path: "/etc/hostname" });
   console.log("read_file result:", fileResult);
 
-  transport.close();
+  await transport.close();
 }
 
 main().catch(console.error);

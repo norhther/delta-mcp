@@ -14,7 +14,7 @@ Standard: {"jsonrpc":"2.0","method":"tools/list","result":{"tools":[...]}}
 Compact:  {"j":"2.0","m":"tools/list","r":{"t":[...]}}
 ```
 
-Compact-JSON reduces payload size by **18.1%** on a 5-tool `tools/list` response. No behavior change — just shorter keys on the wire.
+Compact-JSON reduces payload size by **18.7%** on a 6-tool `tools/list` response. No behavior change — just shorter keys on the wire.
 
 ## CBOR (HTTP only)
 
